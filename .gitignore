@@ -5,5 +5,5 @@ out
 .env.local
 *.log
 .DS_Store
-
+.md
 /lib/generated/prisma
