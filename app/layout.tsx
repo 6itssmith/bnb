@@ -3,6 +3,8 @@ import { Nunito, Quintessential } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { ThemeProvider, ThemeInitScript } from "@/components/ThemeProvider";
+import AOSInit from "@/components/AOSInit";
 
 const nunito = Nunito({
   subsets: ["latin"],
@@ -30,11 +32,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${nunito.variable} ${quintessential.variable}`}>
+    <html lang="en" className={`${nunito.variable} ${quintessential.variable}`} suppressHydrationWarning>
+      <head>
+        <ThemeInitScript />
+      </head>
       <body>
-        <Navbar />
-        <main>{children}</main>
-        <Footer />
+        <ThemeProvider>
+          <AOSInit />
+          <Navbar />
+          <main>{children}</main>
+          <Footer />
+        </ThemeProvider>
       </body>
     </html>
   );

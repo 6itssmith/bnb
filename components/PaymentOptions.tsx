@@ -108,7 +108,7 @@ export default function PaymentOptions({ amountKES, phone, onPaid }: Props) {
   ];
 
   return (
-    <div className="bg-white rounded-xl2 shadow-card border border-earth/10 p-6">
+    <div className="card p-6">
       <h3 className="font-bold text-earth-dark text-lg mb-1">Payment</h3>
       <p className="text-xs text-ink/50 mb-4">
         Sandbox / test mode — no real funds are moved.

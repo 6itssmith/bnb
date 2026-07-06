@@ -14,7 +14,7 @@ export default function ContactForm() {
 
   if (sent) {
     return (
-      <div className="bg-white rounded-xl2 shadow-card border border-earth/10 p-8 text-center">
+      <div className="card p-8 text-center">
         <CheckCircle2 className="w-8 h-8 text-moss mx-auto mb-3" aria-hidden="true" />
         <p className="font-bold text-earth-dark">Message sent</p>
         <p className="text-sm text-ink/70 mt-1">We&apos;ll get back to you shortly.</p>
@@ -23,7 +23,7 @@ export default function ContactForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-xl2 shadow-card border border-earth/10 p-6 space-y-4">
+    <form onSubmit={handleSubmit} className="card p-6 space-y-4">
       <div className="grid sm:grid-cols-2 gap-4">
         <div>
           <label htmlFor="contact-name" className="text-xs font-bold text-earth-dark mb-1.5 block">Name</label>

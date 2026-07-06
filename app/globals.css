@@ -7,7 +7,12 @@ html {
 }
 
 body {
-  @apply bg-cream text-ink font-body antialiased;
+  @apply bg-cream text-ink font-body antialiased transition-colors duration-300;
+}
+
+.dark body,
+html.dark body {
+  @apply bg-ink text-cream;
 }
 
 h1, h2, h3 {
@@ -29,6 +34,13 @@ select:focus-visible {
   outline: 2px solid #2E8B8B;
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* Shared card surface, used across booking, contact, and pricing panels.
+   Centralizing this here keeps light/dark variants consistent instead of
+   repeating the same utility string in every component. */
+.card {
+  @apply bg-white dark:bg-ink/60 rounded-xl2 shadow-card border border-earth/10 dark:border-cream/10;
 }
 
 /* Signature element: "garden path" divider — a dotted stone trail motif

@@ -60,7 +60,7 @@ export default function BookingCalendar({ checkIn, checkOut, onChange }: Props) 
   }
 
   return (
-    <div className="bg-white rounded-xl2 shadow-card border border-earth/10 p-5">
+    <div className="card p-5">
       <div className="flex items-center justify-between mb-4">
         <button
           type="button"

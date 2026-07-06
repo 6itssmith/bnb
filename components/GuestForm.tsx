@@ -20,7 +20,7 @@ export default function GuestForm({ value, onChange }: Props) {
   }
 
   return (
-    <div className="bg-white rounded-xl2 shadow-card border border-earth/10 p-6 space-y-4">
+    <div className="card p-6 space-y-4">
       <h3 className="font-bold text-earth-dark text-lg mb-1">Guest details</h3>
 
       <div>

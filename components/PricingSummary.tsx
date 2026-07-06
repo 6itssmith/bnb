@@ -24,7 +24,7 @@ export default function PricingSummary({ checkIn, checkOut, guests }: Props) {
   const { nights, subtotal, serviceFee, total, deposit } = computeTotals(checkIn, checkOut);
 
   return (
-    <div className="bg-white rounded-xl2 shadow-card border border-earth/10 p-6 sticky top-24">
+    <div className="card p-6 sticky top-24">
       <h3 className="font-bold text-earth-dark text-lg mb-4 flex items-center gap-2">
         <Receipt className="w-5 h-5 text-moss" aria-hidden="true" />
         Price summary

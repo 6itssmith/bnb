@@ -7,7 +7,7 @@ export default function Testimonials() {
       {testimonials.map((t) => (
         <figure
           key={t.name}
-          className="bg-white rounded-xl2 p-6 shadow-card border border-earth/10 flex flex-col"
+          className="card p-6 flex flex-col"
         >
           <Quote className="w-6 h-6 text-gold mb-3" aria-hidden="true" />
           <blockquote className="text-sm leading-relaxed text-ink/85 flex-1">

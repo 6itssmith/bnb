@@ -7,6 +7,7 @@ import BookingCalendar from "@/components/BookingCalendar";
 import PricingSummary, { computeTotals } from "@/components/PricingSummary";
 import GuestForm, { GuestDetails } from "@/components/GuestForm";
 import PaymentOptions from "@/components/PaymentOptions";
+import { safeParseDateParam, safeParseGuestsParam } from "@/lib/safeDate";
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -22,12 +23,12 @@ export default function BookingFlow() {
   const [step, setStep] = useState<Step>(1);
 
   const [checkIn, setCheckIn] = useState<Date | null>(
-    params.get("checkIn") ? new Date(params.get("checkIn")!) : null
+    safeParseDateParam(params.get("checkIn"))
   );
   const [checkOut, setCheckOut] = useState<Date | null>(
-    params.get("checkOut") ? new Date(params.get("checkOut")!) : null
+    safeParseDateParam(params.get("checkOut"))
   );
-  const [guests, setGuests] = useState<number>(Number(params.get("guests")) || 2);
+  const [guests, setGuests] = useState<number>(safeParseGuestsParam(params.get("guests")));
 
   const [guestDetails, setGuestDetails] = useState<GuestDetails>({
     fullName: "",
@@ -82,7 +83,7 @@ export default function BookingFlow() {
               setCheckIn(a);
               setCheckOut(b);
             }} />
-            <div className="bg-white rounded-xl2 shadow-card border border-earth/10 p-5">
+            <div className="card p-5">
               <label htmlFor="guests-count" className="text-xs font-bold text-earth-dark mb-1.5 block">
                 Number of guests
               </label>
@@ -155,7 +156,7 @@ export default function BookingFlow() {
       )}
 
       {step === 4 && (
-        <div className="max-w-xl mx-auto text-center bg-white rounded-xl2 shadow-card border border-earth/10 p-10">
+        <div className="max-w-xl mx-auto text-center card p-10">
           <PartyPopper className="w-10 h-10 text-gold mx-auto mb-4" aria-hidden="true" />
           <h2 className="text-3xl text-earth-dark mb-2">Booking held</h2>
           <p className="text-ink/70 mb-6">

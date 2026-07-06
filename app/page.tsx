@@ -13,52 +13,60 @@ export default function HomePage() {
     <>
       <Hero />
 
-      <section className="max-w-4xl mx-auto px-5 pt-16 text-center">
+      <section className="max-w-4xl mx-auto px-5 pt-16 text-center" data-aos="fade-up">
         <h2 className="text-3xl md:text-4xl text-earth-dark mb-4">About the property</h2>
-        <p className="text-ink/80 leading-relaxed">{property.description}</p>
+        <p className="text-ink/80 dark:text-cream/80 leading-relaxed">{property.description}</p>
       </section>
 
       <SectionDivider />
 
       <section className="max-w-6xl mx-auto px-5">
-        <div className="flex items-end justify-between mb-6">
+        <div className="flex items-end justify-between mb-6" data-aos="fade-up">
           <h2 className="text-3xl md:text-4xl text-earth-dark">Gallery</h2>
           <Link href="/property" className="text-sm font-bold text-lagoon inline-flex items-center gap-1 hover:gap-2 transition-all">
             See full gallery <ArrowRight className="w-4 h-4" aria-hidden="true" />
           </Link>
         </div>
-        <Gallery limit={6} />
+        <div data-aos="fade-up" data-aos-delay="100">
+          <Gallery limit={6} />
+        </div>
       </section>
 
       <SectionDivider />
 
       <section className="max-w-6xl mx-auto px-5">
-        <h2 className="text-3xl md:text-4xl text-earth-dark mb-6 text-center">Amenities</h2>
-        <Amenities />
+        <h2 className="text-3xl md:text-4xl text-earth-dark mb-6 text-center" data-aos="fade-up">Amenities</h2>
+        <div data-aos="fade-up" data-aos-delay="100">
+          <Amenities />
+        </div>
       </section>
 
       <SectionDivider />
 
       <section className="max-w-6xl mx-auto px-5 grid md:grid-cols-2 gap-8 items-start">
-        <div>
+        <div data-aos="fade-right">
           <h2 className="text-3xl md:text-4xl text-earth-dark mb-4">Find us</h2>
-          <p className="text-ink/80 leading-relaxed mb-4">
+          <p className="text-ink/80 dark:text-cream/80 leading-relaxed mb-4">
             Tucked off a quiet lane in {property.location}, twenty minutes from the city centre
             and close to the forest trails.
           </p>
         </div>
-        <LocationMap />
+        <div data-aos="fade-left">
+          <LocationMap />
+        </div>
       </section>
 
       <SectionDivider />
 
       <section className="max-w-6xl mx-auto px-5 pb-20">
-        <h2 className="text-3xl md:text-4xl text-earth-dark mb-6 text-center">What guests say</h2>
-        <Testimonials />
+        <h2 className="text-3xl md:text-4xl text-earth-dark mb-6 text-center" data-aos="fade-up">What guests say</h2>
+        <div data-aos="fade-up" data-aos-delay="100">
+          <Testimonials />
+        </div>
       </section>
 
       <section className="bg-moss text-cream">
-        <div className="max-w-4xl mx-auto px-5 py-16 text-center">
+        <div className="max-w-4xl mx-auto px-5 py-16 text-center" data-aos="zoom-in">
           <h2 className="text-3xl md:text-4xl mb-4">Ready for a quiet few days?</h2>
           <p className="text-cream/85 mb-6">Check dates, see pricing, and hold the cottage in minutes.</p>
           <Link
