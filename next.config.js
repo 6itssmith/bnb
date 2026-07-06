@@ -1,13 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  output: "export", // 
+  output: "export", 
   images: {
-    unoptimized: true, //  
+    unoptimized: true, 
     remotePatterns: [
       { protocol: "https", hostname: "images.unsplash.com" },
     ],
   },
 };
 
-module.exports = nextConfig; //  
+export default nextConfig; // Fix the ES module crash!
