@@ -32,10 +32,24 @@ const supabase = createClient(
 
 // --- Helpers -----------------------------------------------------------------
 
+// This function is invoked directly from the browser (see
+// lib/supabase/functions.ts) rather than through a server-side proxy,
+// because the frontend is a static export with no Next.js server to host
+// one. That means the browser sends a real cross-origin request — for a
+// POST with a JSON body and an Authorization header, that means a CORS
+// preflight (OPTIONS) first. Without these headers the preflight 404s (no
+// route matches OPTIONS) and the browser blocks the actual POST with a
+// CORS error before it ever reaches this code.
+const CORS_HEADERS: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
   });
 }
 
@@ -224,6 +238,7 @@ async function createPaypalIntent(opts: {
 // --- Handler -----------------------------------------------------------------
 
 Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS });
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
 
   let body: {

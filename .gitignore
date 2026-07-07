@@ -8,3 +8,4 @@ out
 *.md
 /lib/generated/prisma
 .claude/ 
+.vscode/
