@@ -38,12 +38,17 @@ export default function BookingCalendar({ checkIn, checkOut, onChange }: Props) 
 
   useEffect(() => {
     let cancelled = false;
-    const supabase = createClient();
 
     async function loadAvailability() {
       setLoading(true);
       setLoadError(null);
       try {
+        // createClient() throws synchronously if NEXT_PUBLIC_SUPABASE_URL /
+        // NEXT_PUBLIC_SUPABASE_ANON_KEY are missing at build time — keep it
+        // inside this try so a misconfigured deploy degrades to the
+        // "couldn't load availability" message below instead of crashing
+        // the whole booking flow up to the page-level ErrorBoundary.
+        const supabase = createClient();
         const [rangesRes, blockedRes] = await Promise.all([
           supabase.from("booked_ranges").select("check_in, check_out"),
           supabase.from("blocked_dates").select("date"),

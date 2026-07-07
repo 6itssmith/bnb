@@ -59,9 +59,9 @@ export default function BookingFlow() {
     setBookingSubmitting(true);
     setBookingError(null);
 
-    const supabase = createClient();
-
     try {
+      const supabase = createClient();
+
       // Best-effort overlap check against the public booked_ranges view.
       // NOTE: this is not atomic — two guests submitting at the same
       // instant could still both pass this check. Real double-booking
