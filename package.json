@@ -9,22 +9,24 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.0",
+    "@supabase/supabase-js": "^2.110.0",
+    "aos": "^2.3.4",
+    "date-fns": "^3.6.0",
+    "lucide-react": "^0.383.0",
     "next": "^15.0.0",
     "react": "^18.3.0",
-    "react-dom": "^18.3.0",
-    "lucide-react": "^0.383.0",
-    "date-fns": "^3.6.0",
-    "aos": "^2.3.4"
+    "react-dom": "^18.3.0"
   },
   "devDependencies": {
-    "typescript": "^5.5.0",
+    "@types/aos": "^3.0.7",
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
-    "@types/aos": "^3.0.7",
-    "tailwindcss": "^3.4.0",
+    "autoprefixer": "^10.4.0",
     "postcss": "^8.4.0",
-    "autoprefixer": "^10.4.0"
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.5.0"
   },
   "description": "Guest-facing frontend for a single-property B&B, built with Next.js 15 (App Router), TypeScript, and Tailwind CSS, following `project.md`.",
   "main": "next.config.js",

@@ -2,12 +2,15 @@
 
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { CalendarCheck, UserCheck, CreditCard, PartyPopper, Download } from "lucide-react";
+import { format } from "date-fns";
+import { CalendarCheck, UserCheck, CreditCard, PartyPopper, Download, Loader2, AlertCircle } from "lucide-react";
 import BookingCalendar from "@/components/BookingCalendar";
 import PricingSummary, { computeTotals } from "@/components/PricingSummary";
 import GuestForm, { GuestDetails } from "@/components/GuestForm";
 import PaymentOptions from "@/components/PaymentOptions";
 import { safeParseDateParam, safeParseGuestsParam } from "@/lib/safeDate";
+import { createClient } from "@/lib/supabase/client";
+import { property } from "@/lib/data";
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -37,11 +40,76 @@ export default function BookingFlow() {
     notes: "",
   });
 
-  const [bookingRef] = useState(() => `RVC-${Math.random().toString(36).slice(2, 8).toUpperCase()}`);
-  const { deposit } = computeTotals(checkIn, checkOut);
+  const [bookingId, setBookingId] = useState<string | null>(null);
+  const [bookingSubmitting, setBookingSubmitting] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
+  const totals = computeTotals(checkIn, checkOut);
+  const { deposit } = totals;
 
   const canContinueFromStep1 = Boolean(checkIn && checkOut);
   const canContinueFromStep2 = Boolean(guestDetails.fullName && guestDetails.email && guestDetails.phone);
+
+  // Reference shown on the confirmation screen. Falls back to a
+  // placeholder until the real booking row exists; the first 8 characters
+  // of the UUID are enough to be a usable human reference.
+  const bookingRef = bookingId ? bookingId.slice(0, 8).toUpperCase() : "PENDING";
+
+  async function handleContinueToPayment() {
+    if (!checkIn || !checkOut) return;
+    setBookingSubmitting(true);
+    setBookingError(null);
+
+    const supabase = createClient();
+
+    try {
+      // Best-effort overlap check against the public booked_ranges view.
+      // NOTE: this is not atomic — two guests submitting at the same
+      // instant could still both pass this check. Real double-booking
+      // protection needs a DB-level exclusion constraint (see
+      // PAYMENT_DB_FINDINGS.md §8); this only catches the common case and
+      // gives a fast, friendly error for it.
+      const { data: existing, error: rangesErr } = await supabase
+        .from("booked_ranges")
+        .select("check_in, check_out");
+      if (rangesErr) throw new Error(`Could not verify availability: ${rangesErr.message}`);
+
+      const overlaps = (existing ?? []).some((r) => {
+        const rIn = new Date(`${r.check_in}T00:00:00`);
+        const rOut = new Date(`${r.check_out}T00:00:00`);
+        return checkIn < rOut && rIn < checkOut;
+      });
+      if (overlaps) {
+        throw new Error("Those dates were just booked by someone else. Please pick different dates.");
+      }
+
+      const { data, error } = await supabase
+        .from("bookings")
+        .insert({
+          check_in: format(checkIn, "yyyy-MM-dd"),
+          check_out: format(checkOut, "yyyy-MM-dd"),
+          guests,
+          guest_name: guestDetails.fullName,
+          guest_email: guestDetails.email,
+          guest_phone: guestDetails.phone,
+          nightly_rate: property.basePricePerNight,
+          total_amount: totals.total,
+          currency: property.currency,
+          deposit_amount: totals.deposit,
+          status: "pending_payment",
+        })
+        .select("id")
+        .single();
+
+      if (error) throw new Error(error.message);
+
+      setBookingId(data.id as string);
+      setStep(3);
+    } catch (err) {
+      setBookingError(err instanceof Error ? err.message : "Could not save your booking. Please try again.");
+    } finally {
+      setBookingSubmitting(false);
+    }
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-5 py-14">
@@ -118,6 +186,12 @@ export default function BookingFlow() {
           <GuestForm value={guestDetails} onChange={setGuestDetails} />
           <div className="space-y-4">
             <PricingSummary checkIn={checkIn} checkOut={checkOut} guests={guests} />
+            {bookingError && (
+              <p className="flex items-start gap-2 text-sm text-earth-dark">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
+                {bookingError}
+              </p>
+            )}
             <div className="flex gap-3">
               <button
                 type="button"
@@ -128,10 +202,11 @@ export default function BookingFlow() {
               </button>
               <button
                 type="button"
-                disabled={!canContinueFromStep2}
-                onClick={() => setStep(3)}
-                className="flex-1 rounded-lg bg-moss text-cream font-bold px-5 py-3 hover:bg-moss-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled={!canContinueFromStep2 || bookingSubmitting}
+                onClick={handleContinueToPayment}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-moss text-cream font-bold px-5 py-3 hover:bg-moss-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
+                {bookingSubmitting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
                 Continue to payment
               </button>
             </div>
@@ -139,9 +214,9 @@ export default function BookingFlow() {
         </div>
       )}
 
-      {step === 3 && (
+      {step === 3 && bookingId && (
         <div className="grid md:grid-cols-[1.3fr_1fr] gap-8 items-start">
-          <PaymentOptions amountKES={deposit} phone={guestDetails.phone} onPaid={() => setStep(4)} />
+          <PaymentOptions amountKES={deposit} phone={guestDetails.phone} bookingId={bookingId} onPaid={() => setStep(4)} />
           <div className="space-y-4">
             <PricingSummary checkIn={checkIn} checkOut={checkOut} guests={guests} />
             <button

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import {
   addMonths,
   eachDayOfInterval,
@@ -14,14 +14,7 @@ import {
   startOfDay,
   startOfMonth,
 } from "date-fns";
-
-// In production this list comes from GET /api/availability?month=YYYY-MM
-// (see BACKEND_SETUP.md). Hard-coded here so the frontend is demoable stand-alone.
-const MOCK_UNAVAILABLE = new Set<string>([
-  format(addMonths(new Date(), 0), "yyyy-MM-") + "18",
-  format(addMonths(new Date(), 0), "yyyy-MM-") + "19",
-  format(addMonths(new Date(), 1), "yyyy-MM-") + "02",
-]);
+import { createClient } from "@/lib/supabase/client";
 
 type Props = {
   checkIn: Date | null;
@@ -33,6 +26,61 @@ export default function BookingCalendar({ checkIn, checkOut, onChange }: Props) 
   const [visibleMonth, setVisibleMonth] = useState(startOfMonth(new Date()));
   const today = startOfDay(new Date());
 
+  // Every date that's either inside an existing (pending/confirmed)
+  // booking's range, or explicitly blocked by the owner. Loaded from
+  // Supabase — `booked_ranges` only exposes check_in/check_out (never
+  // guest PII, see 001_init.sql) and `blocked_dates` is world-readable by
+  // design, so both are safe to query with the anon key straight from the
+  // browser.
+  const [unavailable, setUnavailable] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+
+    async function loadAvailability() {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const [rangesRes, blockedRes] = await Promise.all([
+          supabase.from("booked_ranges").select("check_in, check_out"),
+          supabase.from("blocked_dates").select("date"),
+        ]);
+        if (rangesRes.error) throw new Error(rangesRes.error.message);
+        if (blockedRes.error) throw new Error(blockedRes.error.message);
+
+        const days = new Set<string>();
+        for (const range of rangesRes.data ?? []) {
+          const start = new Date(`${range.check_in}T00:00:00`);
+          const end = new Date(`${range.check_out}T00:00:00`);
+          for (const day of eachDayOfInterval({ start, end })) {
+            // check_out night itself is free (guest leaves that morning);
+            // eachDayOfInterval is inclusive of `end`, so drop the last day.
+            if (!isSameDay(day, end)) days.add(format(day, "yyyy-MM-dd"));
+          }
+        }
+        for (const row of blockedRes.data ?? []) {
+          days.add(row.date as string);
+        }
+
+        if (!cancelled) setUnavailable(days);
+      } catch (err) {
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : "Could not load availability.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadAvailability();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const days = useMemo(() => {
     const start = startOfMonth(visibleMonth);
     const end = endOfMonth(visibleMonth);
@@ -42,7 +90,7 @@ export default function BookingCalendar({ checkIn, checkOut, onChange }: Props) 
   const leadingBlanks = getDay(startOfMonth(visibleMonth));
 
   function isUnavailable(day: Date) {
-    return MOCK_UNAVAILABLE.has(format(day, "yyyy-MM-dd"));
+    return unavailable.has(format(day, "yyyy-MM-dd"));
   }
 
   function handleDayClick(day: Date) {
@@ -70,7 +118,10 @@ export default function BookingCalendar({ checkIn, checkOut, onChange }: Props) 
         >
           <ChevronLeft className="w-4 h-4" aria-hidden="true" />
         </button>
-        <p className="font-bold text-earth-dark">{format(visibleMonth, "MMMM yyyy")}</p>
+        <p className="font-bold text-earth-dark flex items-center gap-2">
+          {format(visibleMonth, "MMMM yyyy")}
+          {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-ink/40" aria-hidden="true" />}
+        </p>
         <button
           type="button"
           onClick={() => setVisibleMonth((m) => addMonths(m, 1))}
@@ -92,7 +143,7 @@ export default function BookingCalendar({ checkIn, checkOut, onChange }: Props) 
           <div key={`blank-${i}`} />
         ))}
         {days.map((day) => {
-          const unavailable = isUnavailable(day);
+          const dayUnavailable = isUnavailable(day);
           const past = isBefore(day, today);
           const isCheckIn = checkIn && isSameDay(day, checkIn);
           const isCheckOut = checkOut && isSameDay(day, checkOut);
@@ -103,11 +154,11 @@ export default function BookingCalendar({ checkIn, checkOut, onChange }: Props) 
             <button
               type="button"
               key={day.toISOString()}
-              disabled={past || unavailable}
+              disabled={past || dayUnavailable}
               onClick={() => handleDayClick(day)}
               className={[
                 "aspect-square rounded-lg text-sm font-semibold transition-colors",
-                past || unavailable
+                past || dayUnavailable
                   ? "text-ink/25 line-through cursor-not-allowed"
                   : "hover:bg-lagoon/10 cursor-pointer",
                 isCheckIn || isCheckOut ? "bg-moss text-cream hover:bg-moss" : "",
@@ -121,7 +172,9 @@ export default function BookingCalendar({ checkIn, checkOut, onChange }: Props) 
       </div>
 
       <p className="text-xs text-ink/50 mt-4">
-        Dates shown in grey are already booked. Selected dates hold for 15 minutes while you complete checkout.
+        {loadError
+          ? "Couldn't load live availability — showing this month with no dates blocked. Please double-check before paying."
+          : "Dates shown in grey are already booked. Selected dates hold for 15 minutes while you complete checkout."}
       </p>
     </div>
   );

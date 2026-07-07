@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Smartphone, CreditCard, Wallet, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { invokeEdgeFunction } from "@/lib/supabase/functions";
 
 type Method = "mpesa" | "stripe" | "paypal";
 type Status = "idle" | "processing" | "success" | "error";
@@ -9,17 +10,26 @@ type Status = "idle" | "processing" | "success" | "error";
 type Props = {
   amountKES: number;
   phone: string;
+  bookingId: string;
   onPaid: () => void;
 };
 
-// All requests below target the backend described in BACKEND_SETUP.md and run
-// against sandbox/test credentials (Daraja sandbox, Stripe test mode, PayPal sandbox).
-// If NEXT_PUBLIC_API_BASE_URL is not set, calls fail gracefully with a clear message
-// so the frontend remains demoable on its own.
+type CreatePaymentIntentResponse = {
+  providerRef: string;
+  url?: string;
+  approveUrl?: string;
+  paymentId: string;
+  bookingId: string;
+};
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+// All three flows call the `create-payment-intent` Supabase Edge Function,
+// which talks to Daraja/Stripe/PayPal sandbox APIs with the real secret
+// keys server-side and records a `payments` row. See
+// supabase/functions/create-payment-intent/index.ts and
+// lib/supabase/functions.ts for why this goes straight to the Edge
+// Function rather than a Next.js API route.
 
-export default function PaymentOptions({ amountKES, phone, onPaid }: Props) {
+export default function PaymentOptions({ amountKES, phone, bookingId, onPaid }: Props) {
   const [method, setMethod] = useState<Method>("mpesa");
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("");
@@ -29,21 +39,18 @@ export default function PaymentOptions({ amountKES, phone, onPaid }: Props) {
     setStatus("processing");
     setMessage("Sending STK push to your phone (sandbox)...");
     try {
-      const res = await fetch(`${API_BASE}/api/payments/mpesa/stkpush`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: mpesaPhone, amount: amountKES }),
+      const data = await invokeEdgeFunction<CreatePaymentIntentResponse>("create-payment-intent", {
+        provider: "mpesa",
+        amount: amountKES,
+        phone: mpesaPhone,
+        bookingId,
       });
-      if (!res.ok) throw new Error("STK push request failed");
-      const data = await res.json();
-      setMessage(`Enter your M-Pesa PIN on your phone to confirm. Ref: ${data.checkoutRequestId ?? "N/A"}`);
+      setMessage(`Enter your M-Pesa PIN on your phone to confirm. Ref: ${data.providerRef}`);
       setStatus("success");
       onPaid();
     } catch (err) {
       setStatus("error");
-      setMessage(
-        "Could not reach the payment backend. Connect NEXT_PUBLIC_API_BASE_URL to the Daraja sandbox endpoint described in BACKEND_SETUP.md."
-      );
+      setMessage(err instanceof Error ? err.message : "Could not reach the M-Pesa sandbox. Please try again.");
     }
   }
 
@@ -51,23 +58,16 @@ export default function PaymentOptions({ amountKES, phone, onPaid }: Props) {
     setStatus("processing");
     setMessage("Creating Stripe test checkout session...");
     try {
-      const res = await fetch(`${API_BASE}/api/payments/stripe/checkout-session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountKES }),
+      const data = await invokeEdgeFunction<CreatePaymentIntentResponse>("create-payment-intent", {
+        provider: "stripe",
+        amount: amountKES,
+        bookingId,
       });
-      if (!res.ok) throw new Error("Stripe session failed");
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-        return;
-      }
-      throw new Error("No checkout URL returned");
+      if (!data.url) throw new Error("No checkout URL returned");
+      window.location.href = data.url;
     } catch (err) {
       setStatus("error");
-      setMessage(
-        "Could not reach the payment backend. Connect NEXT_PUBLIC_API_BASE_URL to a Stripe test-mode session endpoint."
-      );
+      setMessage(err instanceof Error ? err.message : "Could not reach the Stripe sandbox. Please try again.");
     }
   }
 
@@ -75,23 +75,16 @@ export default function PaymentOptions({ amountKES, phone, onPaid }: Props) {
     setStatus("processing");
     setMessage("Creating PayPal sandbox order...");
     try {
-      const res = await fetch(`${API_BASE}/api/payments/paypal/create-order`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountKES }),
+      const data = await invokeEdgeFunction<CreatePaymentIntentResponse>("create-payment-intent", {
+        provider: "paypal",
+        amount: amountKES,
+        bookingId,
       });
-      if (!res.ok) throw new Error("PayPal order failed");
-      const data = await res.json();
-      if (data.approveUrl) {
-        window.location.href = data.approveUrl;
-        return;
-      }
-      throw new Error("No approval URL returned");
+      if (!data.approveUrl) throw new Error("No approval URL returned");
+      window.location.href = data.approveUrl;
     } catch (err) {
       setStatus("error");
-      setMessage(
-        "Could not reach the payment backend. Connect NEXT_PUBLIC_API_BASE_URL to a PayPal sandbox order endpoint."
-      );
+      setMessage(err instanceof Error ? err.message : "Could not reach the PayPal sandbox. Please try again.");
     }
   }
 
