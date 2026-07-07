@@ -3,7 +3,15 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { format } from "date-fns";
-import { CalendarCheck, UserCheck, CreditCard, PartyPopper, Download, Loader2, AlertCircle } from "lucide-react";
+import {
+  CalendarCheck,
+  UserCheck,
+  CreditCard,
+  PartyPopper,
+  Download,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 import BookingCalendar from "@/components/BookingCalendar";
 import PricingSummary, { computeTotals } from "@/components/PricingSummary";
 import GuestForm, { GuestDetails } from "@/components/GuestForm";
@@ -26,12 +34,14 @@ export default function BookingFlow() {
   const [step, setStep] = useState<Step>(1);
 
   const [checkIn, setCheckIn] = useState<Date | null>(
-    safeParseDateParam(params.get("checkIn"))
+    safeParseDateParam(params.get("checkIn")),
   );
   const [checkOut, setCheckOut] = useState<Date | null>(
-    safeParseDateParam(params.get("checkOut"))
+    safeParseDateParam(params.get("checkOut")),
   );
-  const [guests, setGuests] = useState<number>(safeParseGuestsParam(params.get("guests")));
+  const [guests, setGuests] = useState<number>(
+    safeParseGuestsParam(params.get("guests")),
+  );
 
   const [guestDetails, setGuestDetails] = useState<GuestDetails>({
     fullName: "",
@@ -47,12 +57,16 @@ export default function BookingFlow() {
   const { deposit } = totals;
 
   const canContinueFromStep1 = Boolean(checkIn && checkOut);
-  const canContinueFromStep2 = Boolean(guestDetails.fullName && guestDetails.email && guestDetails.phone);
+  const canContinueFromStep2 = Boolean(
+    guestDetails.fullName && guestDetails.email && guestDetails.phone,
+  );
 
   // Reference shown on the confirmation screen. Falls back to a
   // placeholder until the real booking row exists; the first 8 characters
   // of the UUID are enough to be a usable human reference.
-  const bookingRef = bookingId ? bookingId.slice(0, 8).toUpperCase() : "PENDING";
+  const bookingRef = bookingId
+    ? bookingId.slice(0, 8).toUpperCase()
+    : "PENDING";
 
   async function handleContinueToPayment() {
     if (!checkIn || !checkOut) return;
@@ -71,7 +85,8 @@ export default function BookingFlow() {
       const { data: existing, error: rangesErr } = await supabase
         .from("booked_ranges")
         .select("check_in, check_out");
-      if (rangesErr) throw new Error(`Could not verify availability: ${rangesErr.message}`);
+      if (rangesErr)
+        throw new Error(`Could not verify availability: ${rangesErr.message}`);
 
       const overlaps = (existing ?? []).some((r) => {
         const rIn = new Date(`${r.check_in}T00:00:00`);
@@ -79,33 +94,47 @@ export default function BookingFlow() {
         return checkIn < rOut && rIn < checkOut;
       });
       if (overlaps) {
-        throw new Error("Those dates were just booked by someone else. Please pick different dates.");
+        throw new Error(
+          "Those dates were just booked by someone else. Please pick different dates.",
+        );
       }
 
-      const { data, error } = await supabase
-        .from("bookings")
-        .insert({
-          check_in: format(checkIn, "yyyy-MM-dd"),
-          check_out: format(checkOut, "yyyy-MM-dd"),
-          guests,
-          guest_name: guestDetails.fullName,
-          guest_email: guestDetails.email,
-          guest_phone: guestDetails.phone,
-          nightly_rate: property.basePricePerNight,
-          total_amount: totals.total,
-          currency: property.currency,
-          deposit_amount: totals.deposit,
-          status: "pending_payment",
-        })
-        .select("id")
-        .single();
+// We generate the id client-side and skip .select() on purpose:
+      // anon intentionally has no SELECT policy on `bookings` (guests
+      // shouldn't be able to browse each other's bookings), and
+      // `.select()` after `.insert()` makes PostgREST do an
+      // `INSERT ... RETURNING`, which Postgres RLS treats as a SELECT on
+      // the new row. With no permissive SELECT policy for anon, that
+      // RETURNING check fails — surfacing as the *same* "new row violates
+      // row-level security policy" error a failed WITH CHECK would give,
+      // even though the insert itself is fully permitted. Not needing the
+      // row back avoids the whole problem.
+      const newBookingId = crypto.randomUUID();
+      const { error } = await supabase.from("bookings").insert({
+        id: newBookingId,
+        check_in: format(checkIn, "yyyy-MM-dd"),
+        check_out: format(checkOut, "yyyy-MM-dd"),
+        guests,
+        guest_name: guestDetails.fullName,
+        guest_email: guestDetails.email,
+        guest_phone: guestDetails.phone,
+        nightly_rate: property.basePricePerNight,
+        total_amount: totals.total,
+        currency: property.currency,
+        deposit_amount: totals.deposit,
+        status: "pending_payment",
+      });
 
       if (error) throw new Error(error.message);
 
-      setBookingId(data.id as string);
+      setBookingId(newBookingId);
       setStep(3);
     } catch (err) {
-      setBookingError(err instanceof Error ? err.message : "Could not save your booking. Please try again.");
+      setBookingError(
+        err instanceof Error
+          ? err.message
+          : "Could not save your booking. Please try again.",
+      );
     } finally {
       setBookingSubmitting(false);
     }
@@ -113,9 +142,12 @@ export default function BookingFlow() {
 
   return (
     <div className="max-w-6xl mx-auto px-5 py-14">
-      <h1 className="text-4xl md:text-5xl text-earth-dark text-center mb-3">Book your stay</h1>
+      <h1 className="text-4xl md:text-5xl text-earth-dark text-center mb-3">
+        Book your stay
+      </h1>
       <p className="text-center text-ink/70 mb-10">
-        A 15-minute hold is placed on your dates once you continue past this step.
+        A 15-minute hold is placed on your dates once you continue past this
+        step.
       </p>
 
       {/* Stepper */}
@@ -131,14 +163,16 @@ export default function BookingFlow() {
                   active
                     ? "bg-moss text-cream"
                     : done
-                    ? "bg-moss/15 text-moss"
-                    : "bg-earth/10 text-ink/50"
+                      ? "bg-moss/15 text-moss"
+                      : "bg-earth/10 text-ink/50"
                 }`}
               >
                 <Icon className="w-4 h-4" aria-hidden="true" />
                 <span className="hidden sm:inline">{s.label}</span>
               </div>
-              {i < steps.length - 1 && <span className="w-6 md:w-10 h-px bg-earth/20" />}
+              {i < steps.length - 1 && (
+                <span className="w-6 md:w-10 h-px bg-earth/20" />
+              )}
             </li>
           );
         })}
@@ -147,12 +181,19 @@ export default function BookingFlow() {
       {step === 1 && (
         <div className="grid md:grid-cols-[1.3fr_1fr] gap-8 items-start">
           <div className="space-y-4">
-            <BookingCalendar checkIn={checkIn} checkOut={checkOut} onChange={(a, b) => {
-              setCheckIn(a);
-              setCheckOut(b);
-            }} />
+            <BookingCalendar
+              checkIn={checkIn}
+              checkOut={checkOut}
+              onChange={(a, b) => {
+                setCheckIn(a);
+                setCheckOut(b);
+              }}
+            />
             <div className="card p-5">
-              <label htmlFor="guests-count" className="text-xs font-bold text-earth-dark mb-1.5 block">
+              <label
+                htmlFor="guests-count"
+                className="text-xs font-bold text-earth-dark mb-1.5 block"
+              >
                 Number of guests
               </label>
               <input
@@ -168,7 +209,11 @@ export default function BookingFlow() {
           </div>
 
           <div className="space-y-4">
-            <PricingSummary checkIn={checkIn} checkOut={checkOut} guests={guests} />
+            <PricingSummary
+              checkIn={checkIn}
+              checkOut={checkOut}
+              guests={guests}
+            />
             <button
               type="button"
               disabled={!canContinueFromStep1}
@@ -185,10 +230,17 @@ export default function BookingFlow() {
         <div className="grid md:grid-cols-[1.3fr_1fr] gap-8 items-start">
           <GuestForm value={guestDetails} onChange={setGuestDetails} />
           <div className="space-y-4">
-            <PricingSummary checkIn={checkIn} checkOut={checkOut} guests={guests} />
+            <PricingSummary
+              checkIn={checkIn}
+              checkOut={checkOut}
+              guests={guests}
+            />
             {bookingError && (
               <p className="flex items-start gap-2 text-sm text-earth-dark">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
+                <AlertCircle
+                  className="w-4 h-4 mt-0.5 shrink-0"
+                  aria-hidden="true"
+                />
                 {bookingError}
               </p>
             )}
@@ -206,7 +258,12 @@ export default function BookingFlow() {
                 onClick={handleContinueToPayment}
                 className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-moss text-cream font-bold px-5 py-3 hover:bg-moss-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {bookingSubmitting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
+                {bookingSubmitting && (
+                  <Loader2
+                    className="w-4 h-4 animate-spin"
+                    aria-hidden="true"
+                  />
+                )}
                 Continue to payment
               </button>
             </div>
@@ -216,9 +273,18 @@ export default function BookingFlow() {
 
       {step === 3 && bookingId && (
         <div className="grid md:grid-cols-[1.3fr_1fr] gap-8 items-start">
-          <PaymentOptions amountKES={deposit} phone={guestDetails.phone} bookingId={bookingId} onPaid={() => setStep(4)} />
+          <PaymentOptions
+            amountKES={deposit}
+            phone={guestDetails.phone}
+            bookingId={bookingId}
+            onPaid={() => setStep(4)}
+          />
           <div className="space-y-4">
-            <PricingSummary checkIn={checkIn} checkOut={checkOut} guests={guests} />
+            <PricingSummary
+              checkIn={checkIn}
+              checkOut={checkOut}
+              guests={guests}
+            />
             <button
               type="button"
               onClick={() => setStep(2)}
@@ -232,11 +298,16 @@ export default function BookingFlow() {
 
       {step === 4 && (
         <div className="max-w-xl mx-auto text-center card p-10">
-          <PartyPopper className="w-10 h-10 text-gold mx-auto mb-4" aria-hidden="true" />
+          <PartyPopper
+            className="w-10 h-10 text-gold mx-auto mb-4"
+            aria-hidden="true"
+          />
           <h2 className="text-3xl text-earth-dark mb-2">Booking held</h2>
           <p className="text-ink/70 mb-6">
-            Reference <span className="font-bold text-earth-dark">{bookingRef}</span> — a
-            confirmation and receipt have been sent to {guestDetails.email || "your email"}.
+            Reference{" "}
+            <span className="font-bold text-earth-dark">{bookingRef}</span> — a
+            confirmation and receipt have been sent to{" "}
+            {guestDetails.email || "your email"}.
           </p>
           <button
             type="button"
