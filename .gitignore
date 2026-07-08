@@ -9,3 +9,4 @@ out
 /lib/generated/prisma
 .claude/ 
 .vscode/
+MD/
