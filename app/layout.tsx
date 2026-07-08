@@ -21,9 +21,10 @@ const quintessential = Quintessential({
 });
 
 export const metadata: Metadata = {
-  title: "The Ridgeview Cottage | A Private B&B Retreat",
+  title: "Aura Crib | A Private B&B Retreat",
   description:
-    "Book a stay at The Ridgeview Cottage — a single, private B&B property with garden views, warm hospitality, and easy online booking.",
+    "Book a stay at Aura Crib — a single, private B&B property with garden views, warm hospitality, and easy online booking.",
+  manifest: "/site.webmanifest",
 };
 
 export default function RootLayout({

@@ -8,7 +8,7 @@ export default function Hero() {
       <div className="relative h-[78vh] min-h-[520px] w-full overflow-hidden">
         <Image
           src="https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=1600&q=80"
-          alt="The Ridgeview Cottage exterior surrounded by garden at golden hour"
+          alt="Aura Crib exterior surrounded by garden at golden hour"
           fill
           priority
           className="object-cover"

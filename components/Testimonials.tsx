@@ -10,12 +10,12 @@ export default function Testimonials() {
           className="card p-6 flex flex-col"
         >
           <Quote className="w-6 h-6 text-gold mb-3" aria-hidden="true" />
-          <blockquote className="text-sm leading-relaxed text-ink/85 flex-1">
+          <blockquote className="text-sm leading-relaxed text-ink/85 dark:text-cream/85 flex-1">
             {t.quote}
           </blockquote>
-          <figcaption className="mt-4 pt-4 border-t border-earth/10">
-            <p className="font-bold text-sm text-earth-dark">{t.name}</p>
-            <p className="text-xs text-ink/60">{t.stay}</p>
+          <figcaption className="mt-4 pt-4 border-t border-earth/10 dark:border-cream/10">
+            <p className="font-bold text-sm text-earth-dark dark:text-cream">{t.name}</p>
+            <p className="text-xs text-ink/60 dark:text-cream/60">{t.stay}</p>
           </figcaption>
         </figure>
       ))}

@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
-import { Menu, X, Leaf } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
+import { property } from "@/lib/data";
 
 const links = [
   { href: "/", label: "Home" },
@@ -17,10 +19,27 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 bg-cream/90 dark:bg-ink/90 backdrop-blur border-b border-earth/10 dark:border-cream/10">
-      <nav className="max-w-6xl mx-auto flex items-center justify-between px-5 py-4">
+      <nav className="max-w-6xl mx-auto flex items-center justify-between px-5 py-3">
         <Link href="/" className="flex items-center gap-2">
-          <Leaf className="w-5 h-5 text-moss" aria-hidden="true" />
-          <span className="font-display text-xl text-earth-dark dark:text-cream">The Ridgeview Cottage</span>
+          {/* Light-mode logo (full colour on a light background) */}
+          <Image
+            src="/logo-primary.png"
+            alt={`${property.name} logo`}
+            width={36}
+            height={36}
+            className="block dark:hidden rounded-full"
+            priority
+          />
+          {/* Dark-mode logo swap — same mark, tuned for a dark surface */}
+          <Image
+            src="/logo-alt.png"
+            alt={`${property.name} logo`}
+            width={36}
+            height={36}
+            className="hidden dark:block rounded-full"
+            priority
+          />
+          <span className="font-display text-xl text-earth-dark dark:text-cream">{property.name}</span>
         </Link>
 
         <ul className="hidden md:flex items-center gap-8 text-sm font-semibold dark:text-cream">

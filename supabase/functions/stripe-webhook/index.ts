@@ -20,12 +20,17 @@
 
 import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
+import { sendAllNotifications } from "../_shared/notify.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   { auth: { persistSession: false } }
 );
+
+function reference(provider: string, bookingId: string) {
+  return `AURACRIB-${provider.toUpperCase()}-${bookingId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+}
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   // The pinned API version in the metadata. The latest is fine; the SDK
@@ -89,13 +94,31 @@ Deno.serve(async (req: Request) => {
     .eq("id", paymentId);
   if (payErr) console.error("payments update failed", payErr);
 
-  // 2) Flip the booking on success only.
+  // 2) Flip the booking on success only, then notify the guest.
   if (succeeded) {
-    const { error: bookErr } = await supabase
+    const { data: booking, error: bookErr } = await supabase
       .from("bookings")
-      .update({ status: "confirmed" })
-      .eq("id", bookingId);
+      .update({ status: "confirmed", payment_method: "stripe" })
+      .eq("id", bookingId)
+      .select()
+      .maybeSingle();
     if (bookErr) console.error("bookings update failed", bookErr);
+
+    if (booking) {
+      sendAllNotifications({
+        reference: reference("stripe", booking.id),
+        paymentId: reference("stripe", booking.id),
+        provider: "stripe",
+        guestName: booking.guest_name,
+        guestEmail: booking.guest_email,
+        smsPhone: booking.guest_phone,
+        checkIn: booking.check_in,
+        checkOut: booking.check_out,
+        guests: booking.guests,
+        depositKES: Number(booking.deposit_amount),
+        totalKES: Number(booking.total_amount),
+      }).catch((err) => console.error("send-notifications failed", err));
+    }
   }
 
   return json({ ok: true });

@@ -17,8 +17,8 @@ export default function PropertyPage() {
         <p className="text-xs font-bold uppercase tracking-wide text-moss mb-2">
           {property.location}
         </p>
-        <h1 className="text-4xl md:text-5xl text-earth-dark mb-4">{property.name}</h1>
-        <p className="text-ink/80 leading-relaxed">{property.description}</p>
+        <h1 className="text-4xl md:text-5xl text-earth-dark dark:text-cream mb-4">{property.name}</h1>
+        <p className="text-ink/80 dark:text-cream/80 leading-relaxed">{property.description}</p>
       </header>
 
       <Gallery />
@@ -26,7 +26,7 @@ export default function PropertyPage() {
       <SectionDivider />
 
       <section>
-        <h2 className="text-3xl text-earth-dark mb-6 text-center">Amenities</h2>
+        <h2 className="text-3xl text-earth-dark dark:text-cream mb-6 text-center">Amenities</h2>
         <Amenities />
       </section>
 
@@ -34,13 +34,13 @@ export default function PropertyPage() {
 
       <section className="grid md:grid-cols-2 gap-10">
         <div>
-          <h2 className="text-3xl text-earth-dark mb-4 flex items-center gap-2">
+          <h2 className="text-3xl text-earth-dark dark:text-cream mb-4 flex items-center gap-2">
             <FileText className="w-6 h-6 text-moss" aria-hidden="true" />
             Policies
           </h2>
           <ul className="space-y-3">
             {policies.map((p) => (
-              <li key={p} className="flex gap-3 text-sm text-ink/85">
+              <li key={p} className="flex gap-3 text-sm text-ink/85 dark:text-cream/85">
                 <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-gold shrink-0" />
                 {p}
               </li>

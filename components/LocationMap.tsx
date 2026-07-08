@@ -6,14 +6,14 @@ export default function LocationMap() {
   const marker = `${property.lat}%2C${property.lng}`;
 
   return (
-    <div className="rounded-xl2 overflow-hidden shadow-card border border-earth/10">
+    <div className="rounded-xl2 overflow-hidden shadow-card border border-earth/10 dark:border-cream/10">
       <iframe
         title="Property location map"
         className="w-full h-72 md:h-96"
         loading="lazy"
         src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${marker}`}
       />
-      <div className="bg-white px-5 py-3 flex items-center gap-2 text-sm font-semibold text-earth-dark">
+      <div className="bg-white dark:bg-ink/60 px-5 py-3 flex items-center gap-2 text-sm font-semibold text-earth-dark dark:text-cream">
         <MapPin className="w-4 h-4 text-moss" aria-hidden="true" />
         {property.location}
       </div>

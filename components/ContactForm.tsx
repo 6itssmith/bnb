@@ -3,11 +3,13 @@
 import { useState } from "react";
 import { Send, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { usePersistedState } from "@/lib/usePersistedState";
 
 export default function ContactForm() {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [message, setMessage] = useState("");
+  // Persisted so an accidental reload doesn't lose a guest's question.
+  const [name, setName] = usePersistedState("auracrib-contact-name", "");
+  const [email, setEmail] = usePersistedState("auracrib-contact-email", "");
+  const [message, setMessage] = usePersistedState("auracrib-contact-message", "");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
@@ -23,6 +25,10 @@ export default function ContactForm() {
         .insert({ name, email, message });
       if (insertError) throw new Error(insertError.message);
       setSent(true);
+      // Clear the draft once it's actually been sent.
+      setName("");
+      setEmail("");
+      setMessage("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not send your message. Please try again.");
     } finally {
@@ -34,8 +40,8 @@ export default function ContactForm() {
     return (
       <div className="card p-8 text-center">
         <CheckCircle2 className="w-8 h-8 text-moss mx-auto mb-3" aria-hidden="true" />
-        <p className="font-bold text-earth-dark">Message sent</p>
-        <p className="text-sm text-ink/70 mt-1">We&apos;ll get back to you shortly.</p>
+        <p className="font-bold text-earth-dark dark:text-cream">Message sent</p>
+        <p className="text-sm text-ink/70 dark:text-cream/70 mt-1">We&apos;ll get back to you shortly.</p>
       </div>
     );
   }
@@ -44,40 +50,40 @@ export default function ContactForm() {
     <form onSubmit={handleSubmit} className="card p-6 space-y-4">
       <div className="grid sm:grid-cols-2 gap-4">
         <div>
-          <label htmlFor="contact-name" className="text-xs font-bold text-earth-dark mb-1.5 block">Name</label>
+          <label htmlFor="contact-name" className="field-label-plain">Name</label>
           <input
             id="contact-name"
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-lg border border-earth/20 px-3 py-2.5 text-sm focus:border-lagoon"
+            className="field-input"
           />
         </div>
         <div>
-          <label htmlFor="contact-email" className="text-xs font-bold text-earth-dark mb-1.5 block">Email</label>
+          <label htmlFor="contact-email" className="field-label-plain">Email</label>
           <input
             id="contact-email"
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-lg border border-earth/20 px-3 py-2.5 text-sm focus:border-lagoon"
+            className="field-input"
           />
         </div>
       </div>
       <div>
-        <label htmlFor="contact-message" className="text-xs font-bold text-earth-dark mb-1.5 block">Message</label>
+        <label htmlFor="contact-message" className="field-label-plain">Message</label>
         <textarea
           id="contact-message"
           required
           rows={4}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          className="w-full rounded-lg border border-earth/20 px-3 py-2.5 text-sm focus:border-lagoon resize-none"
+          className="field-input resize-none"
         />
       </div>
       {error && (
-        <p className="flex items-start gap-2 text-sm text-earth-dark">
+        <p className="flex items-start gap-2 text-sm text-earth-dark dark:text-gold-light">
           <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
           {error}
         </p>

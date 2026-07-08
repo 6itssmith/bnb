@@ -118,26 +118,26 @@ export default function BookingCalendar({ checkIn, checkOut, onChange }: Props) 
         <button
           type="button"
           onClick={() => setVisibleMonth((m) => addMonths(m, -1))}
-          className="p-2 rounded-full hover:bg-earth/10"
+          className="p-2 rounded-full hover:bg-earth/10 dark:hover:bg-cream/10"
           aria-label="Previous month"
         >
           <ChevronLeft className="w-4 h-4" aria-hidden="true" />
         </button>
-        <p className="font-bold text-earth-dark flex items-center gap-2">
+        <p className="font-bold text-earth-dark dark:text-cream flex items-center gap-2">
           {format(visibleMonth, "MMMM yyyy")}
-          {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-ink/40" aria-hidden="true" />}
+          {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-ink/40 dark:text-cream/40" aria-hidden="true" />}
         </p>
         <button
           type="button"
           onClick={() => setVisibleMonth((m) => addMonths(m, 1))}
-          className="p-2 rounded-full hover:bg-earth/10"
+          className="p-2 rounded-full hover:bg-earth/10 dark:hover:bg-cream/10"
           aria-label="Next month"
         >
           <ChevronRight className="w-4 h-4" aria-hidden="true" />
         </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-ink/50 mb-2">
+      <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-ink/50 dark:text-cream/50 mb-2">
         {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
           <div key={`${d}-${i}`}>{d}</div>
         ))}
@@ -164,7 +164,7 @@ export default function BookingCalendar({ checkIn, checkOut, onChange }: Props) 
               className={[
                 "aspect-square rounded-lg text-sm font-semibold transition-colors",
                 past || dayUnavailable
-                  ? "text-ink/25 line-through cursor-not-allowed"
+                  ? "text-ink/25 dark:text-cream/25 line-through cursor-not-allowed"
                   : "hover:bg-lagoon/10 cursor-pointer",
                 isCheckIn || isCheckOut ? "bg-moss text-cream hover:bg-moss" : "",
                 inRange && !isCheckIn && !isCheckOut ? "bg-gold/20" : "",
@@ -176,7 +176,7 @@ export default function BookingCalendar({ checkIn, checkOut, onChange }: Props) 
         })}
       </div>
 
-      <p className="text-xs text-ink/50 mt-4">
+      <p className="text-xs text-ink/50 dark:text-cream/50 mt-4">
         {loadError
           ? "Couldn't load live availability — showing this month with no dates blocked. Please double-check before paying."
           : "Dates shown in grey are already booked. Selected dates hold for 15 minutes while you complete checkout."}

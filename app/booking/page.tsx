@@ -1,9 +1,10 @@
 import { Suspense } from "react";
 import BookingFlow from "@/components/BookingFlow";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { property } from "@/lib/data";
 
 export const metadata = {
-  title: "Book Your Stay | The Ridgeview Cottage",
+  title: `Book Your Stay | ${property.name}`,
 };
 
 export default function BookingPage() {

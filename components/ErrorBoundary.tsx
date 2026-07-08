@@ -37,8 +37,8 @@ export default class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <div className="max-w-xl mx-auto px-5 py-24 text-center">
-          <AlertTriangle className="w-8 h-8 text-earth-dark mx-auto mb-4" aria-hidden="true" />
-          <h2 className="text-2xl font-bold text-earth-dark mb-2">
+          <AlertTriangle className="w-8 h-8 text-earth-dark dark:text-gold-light mx-auto mb-4" aria-hidden="true" />
+          <h2 className="text-2xl font-bold text-earth-dark dark:text-cream mb-2">
             {this.props.title ?? "Something went wrong loading this page"}
           </h2>
           <p className="text-ink/70 dark:text-cream/70 mb-6">

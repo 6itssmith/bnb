@@ -15,12 +15,17 @@
 // shared secret in the query string and checked here.
 
 import { createClient } from "@supabase/supabase-js";
+import { sendAllNotifications } from "../_shared/notify.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   { auth: { persistSession: false } }
 );
+
+function reference(provider: string, bookingId: string) {
+  return `AURACRIB-${provider.toUpperCase()}-${bookingId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -88,13 +93,32 @@ Deno.serve(async (req: Request) => {
     .eq("id", payment.id);
   if (payUpdErr) console.error("payments update failed", payUpdErr);
 
-  // 3) Flip the booking status on success only.
+  // 3) Flip the booking status on success only, then notify the guest.
   if (succeeded) {
-    const { error: bookUpdErr } = await supabase
+    const { data: booking, error: bookUpdErr } = await supabase
       .from("bookings")
-      .update({ status: "confirmed" })
-      .eq("id", payment.booking_id);
+      .update({ status: "confirmed", payment_method: "mpesa" })
+      .eq("id", payment.booking_id)
+      .select()
+      .maybeSingle();
     if (bookUpdErr) console.error("bookings update failed", bookUpdErr);
+
+    if (booking) {
+      const receiptNumber = (meta["MpesaReceiptNumber"] as string) ?? reference("mpesa", booking.id);
+      sendAllNotifications({
+        reference: reference("mpesa", booking.id),
+        paymentId: receiptNumber,
+        provider: "mpesa",
+        guestName: booking.guest_name,
+        guestEmail: booking.guest_email,
+        smsPhone: booking.guest_phone,
+        checkIn: booking.check_in,
+        checkOut: booking.check_out,
+        guests: booking.guests,
+        depositKES: Number(booking.deposit_amount),
+        totalKES: Number(booking.total_amount),
+      }).catch((err) => console.error("send-notifications failed", err));
+    }
   }
 
   return json({ ok: true });

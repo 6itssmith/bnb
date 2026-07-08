@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, Users, Search } from "lucide-react";
+import { usePersistedState } from "@/lib/usePersistedState";
 
 export default function QuickAvailability() {
   const router = useRouter();
-  const [checkIn, setCheckIn] = useState("");
-  const [checkOut, setCheckOut] = useState("");
-  const [guests, setGuests] = useState(2);
+  const [checkIn, setCheckIn] = usePersistedState("auracrib-quick-checkin", "");
+  const [checkOut, setCheckOut] = usePersistedState("auracrib-quick-checkout", "");
+  const [guests, setGuests] = usePersistedState("auracrib-quick-guests", 2);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -24,10 +24,10 @@ export default function QuickAvailability() {
   return (
     <form
       onSubmit={handleSubmit}
-      className="bg-white/95 rounded-xl2 shadow-soft p-5 md:p-6 grid gap-4 md:grid-cols-[1fr_1fr_auto_auto] items-end border border-earth/10"
+      className="bg-white/95 dark:bg-ink/80 rounded-xl2 shadow-soft p-5 md:p-6 grid gap-4 md:grid-cols-[1fr_1fr_auto_auto] items-end border border-earth/10 dark:border-cream/10"
     >
       <div>
-        <label htmlFor="check-in" className="flex items-center gap-1.5 text-xs font-bold text-earth-dark mb-1.5">
+        <label htmlFor="check-in" className="field-label">
           <CalendarDays className="w-3.5 h-3.5" aria-hidden="true" />
           Check-in
         </label>
@@ -38,12 +38,12 @@ export default function QuickAvailability() {
           value={checkIn}
           onChange={(e) => setCheckIn(e.target.value)}
           required
-          className="w-full rounded-lg border border-earth/20 px-3 py-2.5 text-sm focus:border-lagoon"
+          className="field-input"
         />
       </div>
 
       <div>
-        <label htmlFor="check-out" className="flex items-center gap-1.5 text-xs font-bold text-earth-dark mb-1.5">
+        <label htmlFor="check-out" className="field-label">
           <CalendarDays className="w-3.5 h-3.5" aria-hidden="true" />
           Check-out
         </label>
@@ -54,12 +54,12 @@ export default function QuickAvailability() {
           value={checkOut}
           onChange={(e) => setCheckOut(e.target.value)}
           required
-          className="w-full rounded-lg border border-earth/20 px-3 py-2.5 text-sm focus:border-lagoon"
+          className="field-input"
         />
       </div>
 
       <div>
-        <label htmlFor="guests" className="flex items-center gap-1.5 text-xs font-bold text-earth-dark mb-1.5">
+        <label htmlFor="guests" className="field-label">
           <Users className="w-3.5 h-3.5" aria-hidden="true" />
           Guests
         </label>
@@ -70,7 +70,7 @@ export default function QuickAvailability() {
           max={10}
           value={guests}
           onChange={(e) => setGuests(Number(e.target.value))}
-          className="w-20 rounded-lg border border-earth/20 px-3 py-2.5 text-sm focus:border-lagoon"
+          className="field-input w-20"
         />
       </div>
 

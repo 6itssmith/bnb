@@ -14,7 +14,7 @@ export default function HomePage() {
       <Hero />
 
       <section className="max-w-4xl mx-auto px-5 pt-16 text-center" data-aos="fade-up">
-        <h2 className="text-3xl md:text-4xl text-earth-dark mb-4">About the property</h2>
+        <h2 className="text-3xl md:text-4xl text-earth-dark dark:text-cream mb-4">About the property</h2>
         <p className="text-ink/80 dark:text-cream/80 leading-relaxed">{property.description}</p>
       </section>
 
@@ -22,7 +22,7 @@ export default function HomePage() {
 
       <section className="max-w-6xl mx-auto px-5">
         <div className="flex items-end justify-between mb-6" data-aos="fade-up">
-          <h2 className="text-3xl md:text-4xl text-earth-dark">Gallery</h2>
+          <h2 className="text-3xl md:text-4xl text-earth-dark dark:text-cream">Gallery</h2>
           <Link href="/property" className="text-sm font-bold text-lagoon inline-flex items-center gap-1 hover:gap-2 transition-all">
             See full gallery <ArrowRight className="w-4 h-4" aria-hidden="true" />
           </Link>
@@ -35,7 +35,7 @@ export default function HomePage() {
       <SectionDivider />
 
       <section className="max-w-6xl mx-auto px-5">
-        <h2 className="text-3xl md:text-4xl text-earth-dark mb-6 text-center" data-aos="fade-up">Amenities</h2>
+        <h2 className="text-3xl md:text-4xl text-earth-dark dark:text-cream mb-6 text-center" data-aos="fade-up">Amenities</h2>
         <div data-aos="fade-up" data-aos-delay="100">
           <Amenities />
         </div>
@@ -45,7 +45,7 @@ export default function HomePage() {
 
       <section className="max-w-6xl mx-auto px-5 grid md:grid-cols-2 gap-8 items-start">
         <div data-aos="fade-right">
-          <h2 className="text-3xl md:text-4xl text-earth-dark mb-4">Find us</h2>
+          <h2 className="text-3xl md:text-4xl text-earth-dark dark:text-cream mb-4">Find us</h2>
           <p className="text-ink/80 dark:text-cream/80 leading-relaxed mb-4">
             Tucked off a quiet lane in {property.location}, twenty minutes from the city centre
             and close to the forest trails.
@@ -59,7 +59,7 @@ export default function HomePage() {
       <SectionDivider />
 
       <section className="max-w-6xl mx-auto px-5 pb-20">
-        <h2 className="text-3xl md:text-4xl text-earth-dark mb-6 text-center" data-aos="fade-up">What guests say</h2>
+        <h2 className="text-3xl md:text-4xl text-earth-dark dark:text-cream mb-6 text-center" data-aos="fade-up">What guests say</h2>
         <div data-aos="fade-up" data-aos-delay="100">
           <Testimonials />
         </div>

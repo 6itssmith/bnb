@@ -1,5 +1,5 @@
 export const property = {
-  name: "The Ridgeview Cottage",
+  name: "Aura Crib",
   tagline: "A quiet garden retreat, entirely yours for the stay",
   location: "Karen, Nairobi, Kenya",
   lat: -1.3197,
@@ -7,7 +7,9 @@ export const property = {
   basePricePerNight: 8500, // KES
   currency: "KES",
   description:
-    "Set among two acres of indigenous garden, The Ridgeview Cottage is a single private property with three ensuite rooms, a wraparound veranda, and a kitchen stocked for slow mornings. It's booked as a whole cottage, one party at a time, so the grounds and garden are yours alone for the duration of your stay.",
+    "Set among two acres of indigenous garden, Aura Crib is a single private property with three ensuite rooms, a wraparound veranda, and a kitchen stocked for slow mornings. It's booked as a whole cottage, one party at a time, so the grounds and garden are yours alone for the duration of your stay.",
+  supportEmail: "stay@auracrib.co.ke",
+  supportPhone: "+254 700 000 000",
 };
 
 export const gallery = [

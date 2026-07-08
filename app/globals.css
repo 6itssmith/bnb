@@ -43,6 +43,33 @@ select:focus-visible {
   @apply bg-white dark:bg-ink/60 rounded-xl2 shadow-card border border-earth/10 dark:border-cream/10;
 }
 
+/* Shared form field styles — every text/select/textarea input in the app
+   uses this single class so light/dark contrast is defined in one place.
+   Previously each component repeated its own light-only input classes,
+   which is exactly why dark mode looked inconsistent (inputs stayed white
+   with dark text on a dark card). Fixing it here fixes it everywhere. */
+.field-input {
+  @apply w-full rounded-lg border border-earth/20 dark:border-cream/20 bg-white dark:bg-ink/40 text-ink dark:text-cream px-3 py-2.5 text-sm placeholder:text-ink/40 dark:placeholder:text-cream/40 focus:border-lagoon focus:outline-none transition-colors;
+}
+
+.field-label {
+  @apply flex items-center gap-1.5 text-xs font-bold text-earth-dark dark:text-gold-light mb-1.5;
+}
+
+.field-label-plain {
+  @apply text-xs font-bold text-earth-dark dark:text-gold-light mb-1.5 block;
+}
+
+.heading-sub {
+  @apply font-bold text-earth-dark dark:text-cream text-lg mb-1;
+}
+
+/* Muted body copy inside cards/sections — the dark-mode counterpart of
+   text-ink/NN, used wherever secondary text appears on a themed surface. */
+.text-muted {
+  @apply text-ink/70 dark:text-cream/70;
+}
+
 /* Signature element: "garden path" divider — a dotted stone trail motif
    used between sections, evoking a walk through the property grounds. */
 .garden-path {
