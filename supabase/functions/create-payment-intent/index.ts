@@ -5,6 +5,7 @@
 // provider for an intent/order.
 
 import { createClient } from "@supabase/supabase-js";
+import Stripe from "stripe";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -39,6 +40,55 @@ function base64(str: string) {
   return btoa(binary);
 }
 
+const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") ?? "", {
+  apiVersion: "2024-06-20" as Stripe.LatestApiVersion,
+});
+
+// ==================== M-PESA HELPERS ====================
+
+// Daraja wants Timestamp as yyyyMMddHHmmss in the shortcode's local time.
+// Safaricom's sandbox/production shortcodes are both on Africa/Nairobi
+// (UTC+3, no DST), so a fixed +3h offset from UTC is correct here.
+function mpesaTimestamp(): string {
+  const NAIROBI_OFFSET_MS = 3 * 60 * 60 * 1000;
+  const d = new Date(Date.now() + NAIROBI_OFFSET_MS);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}` +
+    `${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`
+  );
+}
+
+// Daraja requires MSISDN as 254XXXXXXXXX (no leading +, no leading 0).
+// Guests may type 07XXXXXXXX, +2547XXXXXXXX, 2547XXXXXXXX, or 7XXXXXXXX —
+// normalize all of those to the one format Safaricom accepts.
+function normalizeMsisdn(raw: string): string {
+  let p = raw.trim().replace(/[\s\-()]/g, "");
+  if (p.startsWith("+")) p = p.slice(1);
+  if (p.startsWith("0")) p = `254${p.slice(1)}`;
+  else if (p.startsWith("7") || p.startsWith("1")) p = `254${p}`;
+  return p;
+}
+
+async function mpesaAccessToken(base: string): Promise<string> {
+  const key = Deno.env.get("MPESA_CONSUMER_KEY");
+  const secret = Deno.env.get("MPESA_CONSUMER_SECRET");
+  if (!key || !secret) {
+    throw new Error(
+      "M-Pesa env vars are not fully set (MPESA_CONSUMER_KEY / MPESA_CONSUMER_SECRET)",
+    );
+  }
+
+  const res = await fetch(`${base}/oauth/v1/generate?grant_type=client_credentials`, {
+    headers: { Authorization: `Basic ${base64(`${key}:${secret}`)}` },
+  });
+  const data = await res.json();
+  if (!res.ok || !data.access_token) {
+    throw new Error(`M-Pesa OAuth failed: ${JSON.stringify(data)}`);
+  }
+  return data.access_token as string;
+}
+
 // ==================== PROVIDER FUNCTIONS ====================
 
 async function createMpesaIntent(opts: {
@@ -46,15 +96,65 @@ async function createMpesaIntent(opts: {
   amount: number;
   bookingId: string;
   paymentId: string;
-}) {
-  // ... (your original M-Pesa code remains unchanged)
+}): Promise<{ providerRef: string }> {
   const env = Deno.env.get("MPESA_ENV") ?? "sandbox";
   const base =
     env === "production"
       ? "https://api.safaricom.co.ke"
       : "https://sandbox.safaricom.co.ke";
-  const token = await mpesaAccessToken();
-  // ... rest of your M-Pesa implementation
+
+  const shortcode = Deno.env.get("MPESA_SHORTCODE");
+  const passkey = Deno.env.get("MPESA_PASSKEY");
+  const callbackUrl = Deno.env.get("MPESA_CALLBACK_URL");
+  if (!shortcode || !passkey || !callbackUrl) {
+    throw new Error(
+      "M-Pesa env vars are not fully set (MPESA_SHORTCODE / MPESA_PASSKEY / MPESA_CALLBACK_URL)",
+    );
+  }
+
+  const token = await mpesaAccessToken(base);
+  const timestamp = mpesaTimestamp();
+  const password = base64(`${shortcode}${passkey}${timestamp}`);
+  const msisdn = normalizeMsisdn(opts.phone);
+
+  const accountRef = `AURACRIB-${opts.bookingId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+
+  const res = await fetch(`${base}/mpesa/stkpush/v1/processrequest`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      BusinessShortCode: shortcode,
+      Password: password,
+      Timestamp: timestamp,
+      TransactionType: "CustomerPayBillOnline",
+      // Daraja rejects decimals/zero — round up to the nearest whole shilling.
+      Amount: Math.max(1, Math.ceil(opts.amount)),
+      PartyA: msisdn,
+      PartyB: shortcode,
+      PhoneNumber: msisdn,
+      CallBackURL: callbackUrl,
+      AccountReference: accountRef,
+      TransactionDesc: "Aura Crib booking deposit",
+    }),
+  });
+
+  const data = await res.json();
+
+  // Daraja returns 200 with ResponseCode "0" on a successful STK push
+  // request (the push itself may still be rejected later by the guest —
+  // that comes back async via mpesa-webhook). Anything else is a hard
+  // failure to start the push at all.
+  if (!res.ok || data.ResponseCode !== "0" || !data.CheckoutRequestID) {
+    throw new Error(`M-Pesa STK push failed: ${JSON.stringify(data)}`);
+  }
+
+  // CheckoutRequestID is what Safaricom echoes back on the async callback,
+  // so it's stored as provider_ref and used by mpesa-webhook to find this
+  // payment row again.
+  return { providerRef: data.CheckoutRequestID as string };
 }
 
 async function createStripeIntent(opts: {
@@ -62,8 +162,45 @@ async function createStripeIntent(opts: {
   currency: string;
   bookingId: string;
   paymentId: string;
-}) {
-  // ... (your original Stripe code remains unchanged)
+}): Promise<{ providerRef: string; url: string }> {
+  if (!Deno.env.get("STRIPE_SECRET_KEY")) {
+    throw new Error("STRIPE_SECRET_KEY is not set");
+  }
+
+  // Checkout Session (not a raw PaymentIntent) because PaymentOptions.tsx
+  // expects a hosted `url` to redirect the guest to — this is a static
+  // export with no client-side Stripe.js/Elements flow wired up.
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    payment_method_types: ["card"],
+    line_items: [
+      {
+        price_data: {
+          currency: opts.currency.toLowerCase(),
+          product_data: { name: "Aura Crib booking deposit" },
+          unit_amount: Math.round(opts.amount * 100),
+        },
+        quantity: 1,
+      },
+    ],
+    // stripe-webhook looks up the booking/payment by this metadata, read
+    // off the PaymentIntent — set it there too, not just on the Session.
+    metadata: { payment_id: opts.paymentId, booking_id: opts.bookingId },
+    payment_intent_data: {
+      metadata: { payment_id: opts.paymentId, booking_id: opts.bookingId },
+    },
+    success_url: `${siteUrl()}/booking?stripe=success&bookingId=${opts.bookingId}`,
+    cancel_url: `${siteUrl()}/booking?stripe=cancel&bookingId=${opts.bookingId}`,
+  });
+
+  if (!session.url) throw new Error("Stripe did not return a checkout URL");
+
+  const intentId =
+    typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : session.payment_intent?.id;
+
+  return { providerRef: intentId ?? session.id, url: session.url };
 }
 
 async function createPaypalIntent(opts: {
