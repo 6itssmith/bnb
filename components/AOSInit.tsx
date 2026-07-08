@@ -7,10 +7,12 @@ import "aos/dist/aos.css";
 export default function AOSInit() {
   useEffect(() => {
     AOS.init({
-      duration: 700,
+      duration: 900,
       easing: "ease-out-cubic",
       once: true,
-      offset: 80,
+      offset: 120,
+      delay: 50,
+      anchorPlacement: "top bottom",
       disable: () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
     });
   }, []);

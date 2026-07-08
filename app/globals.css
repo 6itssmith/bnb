@@ -6,6 +6,23 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Smooth, app-wide light/dark crossfade — without this, toggling theme
+   snaps every surface instantly, which reads as jarring/broken rather
+   than a deliberate mode switch. */
+*,
+*::before,
+*::after {
+  transition: background-color 300ms ease, border-color 300ms ease, color 300ms ease, fill 300ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+  }
+}
+
 body {
   @apply bg-cream text-ink font-body antialiased transition-colors duration-300;
 }

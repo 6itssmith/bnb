@@ -9,6 +9,7 @@ import {
   CreditCard,
   PartyPopper,
   Download,
+  RotateCcw,
   Loader2,
   AlertCircle,
   Mail,
@@ -37,15 +38,21 @@ const steps: { id: Step; label: string; icon: typeof CalendarCheck }[] = [
 
 const EMPTY_GUEST: GuestDetails = { fullName: "", email: "", phone: "", notes: "" };
 
+const DRAFT_KEYS = [
+  "auracrib-booking-checkin",
+  "auracrib-booking-checkout",
+  "auracrib-booking-guests",
+  "auracrib-booking-guest-details",
+  "auracrib-booking-id",
+  "auracrib-mpesa-phone",
+  "auracrib-sms-phone",
+];
+
 export default function BookingFlow() {
   const params = useSearchParams();
   const [step, setStep] = useState<Step>(1);
   const [verifying, setVerifying] = useState(false);
 
-  // Dates/guests/bookingId arrive from the URL on first load (the homepage
-  // widget, or a Stripe/PayPal redirect coming back) but from then on are
-  // backed by localStorage, so a reload — or a full-page redirect to a
-  // hosted checkout and back — restores exactly where the guest left off.
   const [checkInIso, setCheckInIso] = usePersistedState<string>("auracrib-booking-checkin", "");
   const [checkOutIso, setCheckOutIso] = usePersistedState<string>("auracrib-booking-checkout", "");
   const [guests, setGuests] = usePersistedState<number>("auracrib-booking-guests", 2);
@@ -75,7 +82,6 @@ export default function BookingFlow() {
   const [bookingSubmitting, setBookingSubmitting] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [payment, setPayment] = useState<PaymentSuccess | null>(null);
-  const [notifyStatus, setNotifyStatus] = useState<"idle" | "sending" | "sent" | "skipped">("idle");
 
   const totals = computeTotals(checkIn, checkOut);
   const { deposit } = totals;
@@ -87,11 +93,8 @@ export default function BookingFlow() {
 
   const bookingRef = bookingReference(bookingId);
 
-  async function completeBooking(result: PaymentSuccess) {
-    setPayment(result);
-    setStep(4);
-
-    const receiptArgs = {
+  function receiptArgsFor(result: PaymentSuccess) {
+    return {
       reference: bookingReference(bookingId),
       paymentId: result.transactionId,
       provider: result.provider,
@@ -108,35 +111,24 @@ export default function BookingFlow() {
       depositKES: totals.deposit,
       paidAt: format(new Date(), "d MMM yyyy, HH:mm"),
     };
+  }
+
+  function completeBooking(result: PaymentSuccess) {
+    setPayment(result);
+    setStep(4);
 
     // Fire the receipt automatically; a manual button is always shown too
     // in case the browser blocks the auto-download.
-    setTimeout(() => downloadReceipt(receiptArgs), 300);
+    setTimeout(() => downloadReceipt(receiptArgsFor(result)), 300);
 
     // Email + SMS are sent server-side, from mpesa-webhook / stripe-webhook
     // / paypal-capture, the moment each provider actually confirms the
-    // charge — not from here. Triggering it from the browser instead would
-    // either fire too early (M-Pesa: this screen can show before the guest
-    // has even entered their PIN) or send it twice (Stripe/PayPal, where
-    // the server-side confirmation already sends it independently). If
-    // this was the sandbox simulator (no backend configured at all), there
-    // is no server to send from, so say so plainly instead of pretending.
-    setNotifyStatus(result.simulated ? "skipped" : "sent");
-
-    // Clear the in-progress draft — the booking is done. bookingId is kept
-    // until here in case the guest reloads mid-payment.
-    setCheckInIso("");
-    setCheckOutIso("");
-    setGuests(2);
-    setGuestDetails(EMPTY_GUEST);
+    // charge — see MD/EMAIL_SMS_SETUP.md if they aren't arriving.
   }
 
-  // Handles guests coming back from a Stripe or PayPal hosted checkout —
-  // this is the missing piece behind "no proper handling of stripe...bug
-  // in paypal exhibiting errors": previously nothing on this page reacted
-  // to `?stripe=success` / `?paypal=return`, so a guest who paid
-  // successfully on the provider's page just landed back with no
-  // confirmation and no way to reach the success step.
+  // Handles guests coming back from a Stripe or PayPal hosted checkout, and
+  // confirms PayPal's capture (PayPal's API needs an explicit capture call
+  // after the buyer approves — nothing else triggers that).
   useEffect(() => {
     const stripeStatus = params.get("stripe");
     const paypalStatus = params.get("paypal");
@@ -148,30 +140,22 @@ export default function BookingFlow() {
     if (stripeStatus === "success") {
       // Stripe's hosted Checkout only reaches success_url once the charge
       // has actually succeeded, so trusting the redirect is safe; the
-      // stripe-webhook function is what actually flips the DB row
-      // server-side (the browser has no read access to confirm it).
+      // stripe-webhook function is what actually flips the DB row and
+      // sends the notifications server-side.
       const ref = paymentReference("stripe", urlBookingId ?? bookingId);
-      completeBooking({ provider: "stripe", providerRef: ref, transactionId: ref, smsPhone, simulated: false });
+      completeBooking({ provider: "stripe", transactionId: ref, smsPhone });
     } else if (stripeStatus === "cancel") {
       setStep(3);
       setBookingError("The card payment was cancelled. You can try again below.");
     } else if (paypalStatus === "return" && paypalToken) {
       setVerifying(true);
       setStep(3);
-      invokeEdgeFunction<{ status: string; transactionId?: string }>("paypal-capture", {
-        orderId: paypalToken,
-      })
+      invokeEdgeFunction<{ status: string }>("paypal-capture", { orderId: paypalToken })
         .then((data) => {
           setVerifying(false);
           if (data.status === "succeeded") {
             const ref = paymentReference("paypal", urlBookingId ?? bookingId);
-            completeBooking({
-              provider: "paypal",
-              providerRef: ref,
-              transactionId: data.transactionId ?? ref,
-              smsPhone,
-              simulated: false,
-            });
+            completeBooking({ provider: "paypal", transactionId: ref, smsPhone });
           } else {
             setBookingError("PayPal could not confirm this payment. Please try again.");
           }
@@ -196,7 +180,6 @@ export default function BookingFlow() {
     setBookingSubmitting(true);
     setBookingError(null);
 
-    // Best-effort overlap check + booking insert against Supabase.
     try {
       const supabase = createClient();
 
@@ -214,10 +197,6 @@ export default function BookingFlow() {
         throw new Error("Those dates were just booked by someone else. Please pick different dates.");
       }
 
-      // We generate the id client-side and skip .select() on purpose — see
-      // the note in the original implementation: anon has no SELECT policy
-      // on `bookings`, so RETURNING the row after insert would fail RLS
-      // even though the insert itself is permitted.
       const newBookingId = crypto.randomUUID();
       const { error } = await supabase.from("bookings").insert({
         id: newBookingId,
@@ -248,23 +227,21 @@ export default function BookingFlow() {
 
   function handleManualDownload() {
     if (!payment) return;
-    downloadReceipt({
-      reference: bookingReference(bookingId),
-      paymentId: payment.transactionId,
-      provider: payment.provider,
-      guestName: guestDetails.fullName,
-      guestEmail: guestDetails.email,
-      guestPhone: guestDetails.phone,
-      checkIn: checkIn ? format(checkIn, "d MMM yyyy") : "—",
-      checkOut: checkOut ? format(checkOut, "d MMM yyyy") : "—",
-      guests,
-      nights: totals.nights,
-      subtotalKES: totals.subtotal,
-      serviceFeeKES: totals.serviceFee,
-      totalKES: totals.total,
-      depositKES: totals.deposit,
-      paidAt: format(new Date(), "d MMM yyyy, HH:mm"),
-    });
+    downloadReceipt(receiptArgsFor(payment));
+  }
+
+  function handleBookAgain() {
+    if (typeof window !== "undefined") {
+      DRAFT_KEYS.forEach((key) => window.localStorage.removeItem(key));
+    }
+    setCheckInIso("");
+    setCheckOutIso("");
+    setGuests(2);
+    setGuestDetails(EMPTY_GUEST);
+    setBookingId(null);
+    setPayment(null);
+    setBookingError(null);
+    setStep(1);
   }
 
   return (
@@ -448,35 +425,29 @@ export default function BookingFlow() {
           </dl>
 
           <div className="flex items-center justify-center gap-2 text-xs text-ink/60 dark:text-cream/60 mb-6">
-            {notifyStatus === "sending" && (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
-                Sending confirmation email &amp; SMS...
-              </>
-            )}
-            {notifyStatus === "sent" && (
-              <>
-                <Mail className="w-3.5 h-3.5" aria-hidden="true" />
-                <MessageCircleMore className="w-3.5 h-3.5" aria-hidden="true" />
-                Confirmation emailed and texted to you.
-              </>
-            )}
-            {notifyStatus === "skipped" && (
-              <>
-                <AlertCircle className="w-3.5 h-3.5" aria-hidden="true" />
-                Email/SMS service isn&apos;t connected yet — your receipt below still has everything.
-              </>
-            )}
+            <Mail className="w-3.5 h-3.5" aria-hidden="true" />
+            <MessageCircleMore className="w-3.5 h-3.5" aria-hidden="true" />
+            A confirmation email and SMS are on their way to you.
           </div>
 
-          <button
-            type="button"
-            onClick={handleManualDownload}
-            className="inline-flex items-center gap-2 rounded-full bg-gold text-ink font-bold px-6 py-3 hover:bg-gold-light transition-colors"
-          >
-            <Download className="w-4 h-4" aria-hidden="true" />
-            Download receipt
-          </button>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              type="button"
+              onClick={handleManualDownload}
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-gold text-ink font-bold px-6 py-3 hover:bg-gold-light transition-colors"
+            >
+              <Download className="w-4 h-4" aria-hidden="true" />
+              Download receipt
+            </button>
+            <button
+              type="button"
+              onClick={handleBookAgain}
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-earth/20 dark:border-cream/20 font-bold px-6 py-3 hover:bg-earth/5 dark:hover:bg-cream/10 transition-colors"
+            >
+              <RotateCcw className="w-4 h-4" aria-hidden="true" />
+              Book again
+            </button>
+          </div>
         </div>
       )}
     </div>

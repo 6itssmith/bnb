@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Smartphone,
   CreditCard,
@@ -11,22 +11,15 @@ import {
 } from "lucide-react";
 import { invokeEdgeFunction } from "@/lib/supabase/functions";
 import { usePersistedState } from "@/lib/usePersistedState";
-import {
-  simulateMpesaStk,
-  simulateStripeCheckout,
-  simulatePaypalOrder,
-  type PaymentResult,
-} from "@/lib/paymentSimulator";
+import { paymentReference } from "@/lib/reference";
 
 type Method = "mpesa" | "stripe" | "paypal";
-type Status = "idle" | "processing" | "success" | "error";
+type Status = "idle" | "processing" | "waiting" | "success" | "error";
 
 export type PaymentSuccess = {
   provider: Method;
-  providerRef: string;
-  transactionId: string;
+  transactionId: string; // always the AURACRIB-formatted reference — never a raw provider string
   smsPhone: string;
-  simulated: boolean;
 };
 
 type Props = {
@@ -36,81 +29,101 @@ type Props = {
   onPaid: (result: PaymentSuccess) => void;
 };
 
-type EdgeFunctionResponse = {
+type CreateIntentResponse = {
   providerRef: string;
   url?: string;
   approveUrl?: string;
 };
 
-function isBackendNotConfigured(err: unknown): boolean {
-  return (
-    err instanceof Error &&
-    (err.message.includes("NEXT_PUBLIC_SUPABASE_URL is not set") ||
-      err.message.includes("NEXT_PUBLIC_SUPABASE_ANON_KEY is not set"))
-  );
-}
+type StatusResponse = {
+  status: "initiated" | "succeeded" | "failed" | "not_found";
+};
+
+const POLL_INTERVAL_MS = 3000;
+const POLL_TIMEOUT_MS = 90000;
 
 export default function PaymentOptions({ amountKES, phone, bookingId, onPaid }: Props) {
   const [method, setMethod] = useState<Method>("mpesa");
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollDeadlineRef = useRef<number>(0);
 
-  // M-Pesa phone persists across reloads (and re-syncs if the guest details
-  // step's phone number changes) — fixes both the "form has to be
-  // refilled" bug and the earlier "mpesaPhone never re-syncs" bug.
   const [mpesaPhone, setMpesaPhone] = usePersistedState("auracrib-mpesa-phone", phone);
   useEffect(() => {
     setMpesaPhone((prev) => (prev ? prev : phone));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phone]);
 
-  // Card fields are sandbox-only and intentionally NOT persisted to
-  // localStorage even in test mode — no reason to make a habit of it.
-  const [card, setCard] = useState({ number: "", expiry: "", cvc: "" });
-
   // Guests who pay by card or PayPal don't have a verified phone number the
-  // way M-Pesa guests do, so we ask for one before sending the SMS receipt
-  // (Update_Module.md §4b: "prompted to key in Numeric number ... so they
-  // get their details").
+  // way M-Pesa guests do, so we ask for one to send the SMS receipt to.
   const [smsPhone, setSmsPhone] = usePersistedState("auracrib-sms-phone", phone);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  function stopPolling() {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }
+
+  function pollMpesaStatus() {
+    pollDeadlineRef.current = Date.now() + POLL_TIMEOUT_MS;
+    pollRef.current = setInterval(async () => {
+      if (Date.now() > pollDeadlineRef.current) {
+        stopPolling();
+        setStatus("error");
+        setMessage(
+          "Still waiting on confirmation from Safaricom. If you completed the prompt, this can take a little longer — otherwise please try again.",
+        );
+        return;
+      }
+
+      try {
+        const data = await invokeEdgeFunction<StatusResponse>("check-payment-status", {
+          bookingId,
+          provider: "mpesa",
+        });
+
+        if (data.status === "succeeded") {
+          stopPolling();
+          const ref = paymentReference("mpesa", bookingId);
+          setStatus("success");
+          setMessage(`Payment confirmed via M-Pesa. Ref: ${ref}`);
+          onPaid({ provider: "mpesa", transactionId: ref, smsPhone: mpesaPhone });
+        } else if (data.status === "failed") {
+          stopPolling();
+          setStatus("error");
+          setMessage("The M-Pesa payment wasn't completed. Please try again.");
+        }
+        // "initiated" / "not_found" — keep waiting, keep polling.
+      } catch {
+        // A transient poll failure isn't fatal — just try again next tick.
+      }
+    }, POLL_INTERVAL_MS);
+  }
 
   async function payWithMpesa() {
     setStatus("processing");
-    setMessage("Sending STK push to your phone (sandbox)...");
+    setMessage("Sending STK push to your phone...");
     try {
-      let result: PaymentResult;
-      try {
-        const data = await invokeEdgeFunction<EdgeFunctionResponse>("create-payment-intent", {
-          provider: "mpesa",
-          amount: amountKES,
-          phone: mpesaPhone,
-          bookingId,
-        });
-        result = {
-          providerRef: data.providerRef,
-          transactionId: data.providerRef,
-          status: "succeeded",
-          simulated: false,
-          message: `Enter your M-Pesa PIN on your phone to confirm. Ref: ${data.providerRef}`,
-        };
-      } catch (err) {
-        if (!isBackendNotConfigured(err)) throw err;
-        // Sandbox fallback for a frontend running with no Supabase project
-        // configured at all — see lib/paymentSimulator.ts.
-        result = await simulateMpesaStk(mpesaPhone, amountKES, bookingId);
-      }
-
-      if (result.status === "failed") {
-        setStatus("error");
-        setMessage(result.message);
-        return;
-      }
-      setStatus("success");
-      setMessage(result.message);
-      onPaid({ provider: "mpesa", providerRef: result.providerRef, transactionId: result.transactionId, smsPhone: mpesaPhone, simulated: result.simulated });
+      await invokeEdgeFunction<CreateIntentResponse>("create-payment-intent", {
+        provider: "mpesa",
+        amount: amountKES,
+        phone: mpesaPhone,
+        bookingId,
+      });
+      setStatus("waiting");
+      setMessage("Check your phone and enter your M-Pesa PIN to confirm.");
+      pollMpesaStatus();
     } catch (err) {
       setStatus("error");
-      setMessage(err instanceof Error ? err.message : "Could not process the M-Pesa payment. Please try again.");
+      setMessage(err instanceof Error ? err.message : "Could not send the STK push. Please try again.");
     }
   }
 
@@ -121,35 +134,18 @@ export default function PaymentOptions({ amountKES, phone, bookingId, onPaid }: 
       return;
     }
     setStatus("processing");
-    setMessage("Processing card payment (Stripe test mode)...");
+    setMessage("Redirecting to Stripe...");
     try {
-      try {
-        const data = await invokeEdgeFunction<EdgeFunctionResponse>("create-payment-intent", {
-          provider: "stripe",
-          amount: amountKES,
-          bookingId,
-        });
-        if (!data.url) throw new Error("No checkout URL returned");
-        // Stripe's hosted Checkout only reaches success_url after the
-        // charge has actually succeeded, so the redirect itself is the
-        // trustworthy signal — BookingFlow reads it back on return.
-        window.location.href = data.url;
-        return;
-      } catch (err) {
-        if (!isBackendNotConfigured(err)) throw err;
-        const result = await simulateStripeCheckout(amountKES, bookingId, card);
-        if (result.status === "failed") {
-          setStatus("error");
-          setMessage(result.message);
-          return;
-        }
-        setStatus("success");
-        setMessage(result.message);
-        onPaid({ provider: "stripe", providerRef: result.providerRef, transactionId: result.transactionId, smsPhone, simulated: true });
-      }
+      const data = await invokeEdgeFunction<CreateIntentResponse>("create-payment-intent", {
+        provider: "stripe",
+        amount: amountKES,
+        bookingId,
+      });
+      if (!data.url) throw new Error("No checkout URL returned");
+      window.location.href = data.url;
     } catch (err) {
       setStatus("error");
-      setMessage(err instanceof Error ? err.message : "Could not process the card payment. Please try again.");
+      setMessage(err instanceof Error ? err.message : "Could not start the card payment. Please try again.");
     }
   }
 
@@ -160,30 +156,21 @@ export default function PaymentOptions({ amountKES, phone, bookingId, onPaid }: 
       return;
     }
     setStatus("processing");
-    setMessage("Creating PayPal sandbox order...");
+    setMessage("Redirecting to PayPal...");
     try {
-      try {
-        const data = await invokeEdgeFunction<EdgeFunctionResponse>("create-payment-intent", {
-          provider: "paypal",
-          amount: amountKES,
-          bookingId,
-        });
-        if (!data.approveUrl) throw new Error("No approval URL returned");
-        // PayPal still needs an explicit capture call after the guest
-        // approves — BookingFlow does that when it sees the `paypal=return`
-        // redirect (see supabase/functions/paypal-capture).
-        window.location.href = data.approveUrl;
-        return;
-      } catch (err) {
-        if (!isBackendNotConfigured(err)) throw err;
-        const result = await simulatePaypalOrder(amountKES, bookingId);
-        setStatus("success");
-        setMessage(result.message);
-        onPaid({ provider: "paypal", providerRef: result.providerRef, transactionId: result.transactionId, smsPhone, simulated: true });
-      }
+      const data = await invokeEdgeFunction<CreateIntentResponse>("create-payment-intent", {
+        provider: "paypal",
+        amount: amountKES,
+        bookingId,
+      });
+      if (!data.approveUrl) throw new Error("No approval URL returned");
+      // PayPal still needs an explicit capture call after the guest
+      // approves — BookingFlow does that when it sees the `paypal=return`
+      // redirect (see supabase/functions/paypal-capture).
+      window.location.href = data.approveUrl;
     } catch (err) {
       setStatus("error");
-      setMessage(err instanceof Error ? err.message : "Could not process the PayPal payment. Please try again.");
+      setMessage(err instanceof Error ? err.message : "Could not start the PayPal payment. Please try again.");
     }
   }
 
@@ -199,6 +186,8 @@ export default function PaymentOptions({ amountKES, phone, bookingId, onPaid }: 
     { id: "paypal", label: "PayPal", icon: Wallet },
   ];
 
+  const busy = status === "processing" || status === "waiting";
+
   return (
     <div className="card p-6">
       <h3 className="heading-sub">Payment</h3>
@@ -211,12 +200,14 @@ export default function PaymentOptions({ amountKES, phone, bookingId, onPaid }: 
           <button
             key={t.id}
             type="button"
+            disabled={busy}
             onClick={() => {
+              stopPolling();
               setMethod(t.id);
               setStatus("idle");
               setMessage("");
             }}
-            className={`flex flex-col items-center gap-1.5 rounded-lg border px-3 py-3 text-xs font-bold transition-colors ${
+            className={`flex flex-col items-center gap-1.5 rounded-lg border px-3 py-3 text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
               method === t.id
                 ? "border-moss bg-moss/10 text-moss"
                 : "border-earth/15 dark:border-cream/15 text-ink/60 dark:text-cream/60 hover:border-earth/30 dark:hover:border-cream/30"
@@ -236,9 +227,10 @@ export default function PaymentOptions({ amountKES, phone, bookingId, onPaid }: 
           <input
             id="mpesa-phone"
             value={mpesaPhone}
+            disabled={busy}
             onChange={(e) => setMpesaPhone(e.target.value)}
             placeholder="2547XXXXXXXX"
-            className="field-input"
+            className="field-input disabled:opacity-60"
           />
         </div>
       )}
@@ -246,48 +238,17 @@ export default function PaymentOptions({ amountKES, phone, bookingId, onPaid }: 
       {method === "stripe" && (
         <div className="mb-4 space-y-3">
           <p className="text-sm text-ink/70 dark:text-cream/70">
-            Sandbox card entry — use test card 4242 4242 4242 4242, any future expiry, any CVC.
+            You&apos;ll be taken to Stripe&apos;s secure test-mode checkout to complete payment.
           </p>
-          <div>
-            <label htmlFor="card-number" className="field-label-plain">Card number</label>
-            <input
-              id="card-number"
-              value={card.number}
-              onChange={(e) => setCard((c) => ({ ...c, number: e.target.value }))}
-              placeholder="4242 4242 4242 4242"
-              className="field-input"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="card-expiry" className="field-label-plain">Expiry</label>
-              <input
-                id="card-expiry"
-                value={card.expiry}
-                onChange={(e) => setCard((c) => ({ ...c, expiry: e.target.value }))}
-                placeholder="12/29"
-                className="field-input"
-              />
-            </div>
-            <div>
-              <label htmlFor="card-cvc" className="field-label-plain">CVC</label>
-              <input
-                id="card-cvc"
-                value={card.cvc}
-                onChange={(e) => setCard((c) => ({ ...c, cvc: e.target.value }))}
-                placeholder="123"
-                className="field-input"
-              />
-            </div>
-          </div>
           <div>
             <label htmlFor="sms-phone-stripe" className="field-label-plain">Phone for SMS confirmation</label>
             <input
               id="sms-phone-stripe"
               value={smsPhone}
+              disabled={busy}
               onChange={(e) => setSmsPhone(e.target.value)}
               placeholder="2547XXXXXXXX"
-              className="field-input"
+              className="field-input disabled:opacity-60"
             />
           </div>
         </div>
@@ -303,9 +264,10 @@ export default function PaymentOptions({ amountKES, phone, bookingId, onPaid }: 
             <input
               id="sms-phone-paypal"
               value={smsPhone}
+              disabled={busy}
               onChange={(e) => setSmsPhone(e.target.value)}
               placeholder="2547XXXXXXXX"
-              className="field-input"
+              className="field-input disabled:opacity-60"
             />
           </div>
         </div>
@@ -314,10 +276,10 @@ export default function PaymentOptions({ amountKES, phone, bookingId, onPaid }: 
       <button
         type="button"
         onClick={handlePay}
-        disabled={status === "processing"}
+        disabled={busy}
         className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-gold text-ink font-bold px-5 py-3 hover:bg-gold-light transition-colors disabled:opacity-60"
       >
-        {status === "processing" && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
+        {busy && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
         Pay KES {amountKES.toLocaleString()} (deposit)
       </button>
 
@@ -329,6 +291,8 @@ export default function PaymentOptions({ amountKES, phone, bookingId, onPaid }: 
         >
           {status === "error" ? (
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
+          ) : status === "waiting" ? (
+            <Loader2 className="w-4 h-4 mt-0.5 shrink-0 animate-spin" aria-hidden="true" />
           ) : (
             <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
           )}
