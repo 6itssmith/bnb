@@ -71,19 +71,6 @@ export async function sendConfirmationEmail(p: NotifyPayload) {
   }
 }
 
-// Twilio requires E.164 (+2547XXXXXXXX). Guests commonly type 07XXXXXXXX
-// or 2547XXXXXXXX without the "+" — normalize before it reaches Twilio's
-// API instead of letting it fail silently as "unverified"/invalid number.
-// See MD/EMAIL_SMS_SETUP.md §3 step 5.
-function normalizeToE164(raw: string): string {
-  let p = raw.trim().replace(/[\s\-()]/g, "");
-  if (p.startsWith("+")) return p;
-  if (p.startsWith("0")) return `+254${p.slice(1)}`;
-  if (p.startsWith("254")) return `+${p}`;
-  if (p.startsWith("7") || p.startsWith("1")) return `+254${p}`;
-  return `+${p}`;
-}
-
 /** Sends the booking confirmation SMS via the Twilio API (sandbox/trial account). */
 export async function sendConfirmationSms(p: NotifyPayload) {
   if (!p.smsPhone) throw new Error("No phone number supplied for SMS");
@@ -96,7 +83,7 @@ export async function sendConfirmationSms(p: NotifyPayload) {
   }
 
   const body = new URLSearchParams({
-    To: normalizeToE164(p.smsPhone),
+    To: p.smsPhone,
     From: fromNumber,
     Body: summaryText(p),
   });
