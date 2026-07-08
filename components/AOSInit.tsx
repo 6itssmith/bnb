@@ -12,7 +12,7 @@ export default function AOSInit() {
       once: true,
       offset: 120,
       delay: 50,
-      anchorPlacement: "top bottom",
+      anchorPlacement: "top-bottom",
       disable: () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
     });
   }, []);
