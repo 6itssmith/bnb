@@ -133,17 +133,43 @@ export default function BookingFlow() {
     const stripeStatus = params.get("stripe");
     const paypalStatus = params.get("paypal");
     const urlBookingId = params.get("bookingId");
+    const stripeSessionId = params.get("session_id");
     const paypalToken = params.get("token"); // PayPal appends this = order id
 
     if (urlBookingId && !bookingId) setBookingId(urlBookingId);
 
-    if (stripeStatus === "success") {
-      // Stripe's hosted Checkout only reaches success_url once the charge
-      // has actually succeeded, so trusting the redirect is safe; the
-      // stripe-webhook function is what actually flips the DB row and
-      // sends the notifications server-side.
-      const ref = paymentReference("stripe", urlBookingId ?? bookingId);
-      completeBooking({ provider: "stripe", transactionId: ref, smsPhone });
+    if (stripeStatus === "success" && stripeSessionId) {
+      // Verify the Checkout Session with Stripe from an Edge Function before
+      // showing success. This is a reliable fallback when a webhook is still
+      // being delivered, while the webhook remains the normal confirmation
+      // path.
+      setVerifying(true);
+      setStep(3);
+      invokeEdgeFunction<{ status: string; transactionId?: string }>("stripe-confirm", {
+        sessionId: stripeSessionId,
+        bookingId: urlBookingId,
+      })
+        .then((data) => {
+          setVerifying(false);
+          if (data.status === "succeeded") {
+            completeBooking({
+              provider: "stripe",
+              transactionId: data.transactionId ?? paymentReference("stripe", urlBookingId ?? bookingId),
+              smsPhone,
+            });
+          } else {
+            setBookingError("Stripe has not confirmed this payment yet. Please refresh in a moment.");
+          }
+        })
+        .catch((err) => {
+          setVerifying(false);
+          setBookingError(
+            err instanceof Error ? `Stripe confirmation failed: ${err.message}` : "Stripe confirmation failed. Please try again.",
+          );
+        });
+    } else if (stripeStatus === "success") {
+      setStep(3);
+      setBookingError("Stripe returned without a checkout session ID. Please contact support with your booking reference.");
     } else if (stripeStatus === "cancel") {
       setStep(3);
       setBookingError("The card payment was cancelled. You can try again below.");

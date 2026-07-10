@@ -163,7 +163,9 @@ async function createStripeIntent(opts: {
   const key = Deno.env.get("STRIPE_SECRET_KEY")!;
   const params = new URLSearchParams();
   params.set("mode", "payment");
-  params.set("success_url", `${siteUrl()}/booking?stripe=success&bookingId=${opts.bookingId}`);
+  // Include the Checkout Session ID so the return page can verify its state
+  // server-side if a Stripe webhook is delayed or misconfigured.
+  params.set("success_url", `${siteUrl()}/booking?stripe=success&bookingId=${opts.bookingId}&session_id={CHECKOUT_SESSION_ID}`);
   params.set("cancel_url", `${siteUrl()}/booking?stripe=cancel&bookingId=${opts.bookingId}`);
   params.set("line_items[0][quantity]", "1");
   params.set("line_items[0][price_data][currency]", opts.currency.toLowerCase());
@@ -171,6 +173,8 @@ async function createStripeIntent(opts: {
   params.set("line_items[0][price_data][product_data][name]", `Booking deposit ${opts.bookingId}`);
   params.set("payment_intent_data[metadata][booking_id]", opts.bookingId);
   params.set("payment_intent_data[metadata][payment_id]", opts.paymentId);
+  params.set("metadata[booking_id]", opts.bookingId);
+  params.set("metadata[payment_id]", opts.paymentId);
 
   const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
