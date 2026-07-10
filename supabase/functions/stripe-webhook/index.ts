@@ -85,10 +85,12 @@ Deno.serve(async (req: Request) => {
   }
 
   // 1) Update the payments row.
+  const transactionId = intent.id;
   const { error: payErr } = await supabase
     .from("payments")
     .update({
       status: succeeded ? "succeeded" : "failed",
+      transaction_id: transactionId,
       raw_payload: { type: event.type, id: event.id, intent_id: intent.id },
     })
     .eq("id", paymentId);
@@ -98,7 +100,12 @@ Deno.serve(async (req: Request) => {
   if (succeeded) {
     const { data: booking, error: bookErr } = await supabase
       .from("bookings")
-      .update({ status: "confirmed", payment_method: "stripe" })
+      .update({
+        status: "confirmed",
+        payment_status: "Success",
+        payment_method: "Stripe",
+        transaction_id: transactionId,
+      })
       .eq("id", bookingId)
       .select()
       .maybeSingle();
@@ -107,7 +114,7 @@ Deno.serve(async (req: Request) => {
     if (booking) {
       sendAllNotifications({
         reference: reference("stripe", booking.id),
-        paymentId: reference("stripe", booking.id),
+        paymentId: transactionId,
         provider: "stripe",
         guestName: booking.guest_name,
         guestEmail: booking.guest_email,
@@ -119,6 +126,11 @@ Deno.serve(async (req: Request) => {
         totalKES: Number(booking.total_amount),
       }).catch((err) => console.error("send-notifications failed", err));
     }
+  } else {
+    await supabase
+      .from("bookings")
+      .update({ payment_status: "Failed", payment_method: "Stripe" })
+      .eq("id", bookingId);
   }
 
   return json({ ok: true });

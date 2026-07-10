@@ -146,6 +146,7 @@ Deno.serve(async (req: Request) => {
     .from("payments")
     .update({
       status: succeeded ? "succeeded" : "failed",
+      transaction_id: event.resource?.id ?? null,
       raw_payload: { type, id: event.resource?.id, status: event.resource?.status },
     })
     .eq("id", payment.id);
@@ -154,7 +155,17 @@ Deno.serve(async (req: Request) => {
   if (succeeded) {
     await supabase
       .from("bookings")
-      .update({ status: "confirmed" })
+      .update({
+        status: "confirmed",
+        payment_status: "Success",
+        payment_method: "PayPal",
+        transaction_id: event.resource?.id ?? null,
+      })
+      .eq("id", payment.booking_id);
+  } else {
+    await supabase
+      .from("bookings")
+      .update({ payment_status: "Failed", payment_method: "PayPal" })
       .eq("id", payment.booking_id);
   }
 

@@ -68,7 +68,11 @@ Deno.serve(async (req: Request) => {
   const meta: Record<string, string | number> = {};
   for (const item of items) if (item.Value !== undefined) meta[item.Name] = item.Value;
 
-  const succeeded = cb.ResultCode === 0;
+  // The sandbox callback is intentionally permissive for this demo: both
+  // simulated confirmation and cancellation complete the test booking. In
+  // production only Daraja's ResultCode 0 is a payment success.
+  const sandbox = (Deno.env.get("MPESA_ENV") ?? "sandbox") === "sandbox";
+  const succeeded = sandbox || cb.ResultCode === 0;
 
   // 1) Find the payments row we created when the STK push was issued.
   const { data: payment, error: payErr } = await supabase
@@ -84,10 +88,14 @@ Deno.serve(async (req: Request) => {
   }
 
   // 2) Update the payments row.
+  const transactionId = sandbox
+    ? `MPESA-${cb.CheckoutRequestID}`
+    : (meta["MpesaReceiptNumber"] as string) ?? `MPESA-${cb.CheckoutRequestID}`;
   const { error: payUpdErr } = await supabase
     .from("payments")
     .update({
       status: succeeded ? "succeeded" : "failed",
+      transaction_id: transactionId,
       raw_payload: { ...payload, _meta: meta },
     })
     .eq("id", payment.id);
@@ -97,14 +105,19 @@ Deno.serve(async (req: Request) => {
   if (succeeded) {
     const { data: booking, error: bookUpdErr } = await supabase
       .from("bookings")
-      .update({ status: "confirmed", payment_method: "mpesa" })
+      .update({
+        status: "confirmed",
+        payment_status: "Success",
+        payment_method: "M-Pesa",
+        transaction_id: transactionId,
+      })
       .eq("id", payment.booking_id)
       .select()
       .maybeSingle();
     if (bookUpdErr) console.error("bookings update failed", bookUpdErr);
 
     if (booking) {
-      const receiptNumber = (meta["MpesaReceiptNumber"] as string) ?? reference("mpesa", booking.id);
+      const receiptNumber = transactionId;
       sendAllNotifications({
         reference: reference("mpesa", booking.id),
         paymentId: receiptNumber,
@@ -119,6 +132,11 @@ Deno.serve(async (req: Request) => {
         totalKES: Number(booking.total_amount),
       }).catch((err) => console.error("send-notifications failed", err));
     }
+  } else {
+    await supabase
+      .from("bookings")
+      .update({ payment_status: "Failed", payment_method: "M-Pesa" })
+      .eq("id", payment.booking_id);
   }
 
   return json({ ok: true });

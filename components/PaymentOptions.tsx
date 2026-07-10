@@ -33,6 +33,8 @@ type CreateIntentResponse = {
   providerRef: string;
   url?: string;
   approveUrl?: string;
+  status?: "succeeded";
+  transactionId?: string;
 };
 
 type StatusResponse = {
@@ -112,12 +114,22 @@ export default function PaymentOptions({ amountKES, phone, bookingId, onPaid }: 
     setStatus("processing");
     setMessage("Sending STK push to your phone...");
     try {
-      await invokeEdgeFunction<CreateIntentResponse>("create-payment-intent", {
+      const data = await invokeEdgeFunction<CreateIntentResponse>("create-payment-intent", {
         provider: "mpesa",
         amount: amountKES,
         phone: mpesaPhone,
         bookingId,
       });
+      // Sandbox mode deliberately completes the payment as soon as Safaricom
+      // accepts the STK request. This avoids a non-deterministic sandbox PIN
+      // prompt/callback from trapping the UI in its polling state.
+      if (data.status === "succeeded") {
+        const transactionId = data.transactionId ?? paymentReference("mpesa", bookingId);
+        setStatus("success");
+        setMessage(`Sandbox payment recorded. Ref: ${transactionId}`);
+        onPaid({ provider: "mpesa", transactionId, smsPhone: mpesaPhone });
+        return;
+      }
       setStatus("waiting");
       setMessage("Check your phone and enter your M-Pesa PIN to confirm.");
       pollMpesaStatus();

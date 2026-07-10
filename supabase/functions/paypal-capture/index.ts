@@ -132,6 +132,7 @@ Deno.serve(async (req: Request) => {
           .update({
             status: succeeded ? "succeeded" : "failed",
             provider_ref: orderId,
+            transaction_id: captureId,
             raw_payload: capture,
           })
           .eq("id", payment.id);
@@ -139,7 +140,12 @@ Deno.serve(async (req: Request) => {
         if (succeeded) {
           const { data: booking } = await supabase
             .from("bookings")
-            .update({ status: "confirmed", payment_method: "paypal" })
+            .update({
+              status: "confirmed",
+              payment_status: "Success",
+              payment_method: "PayPal",
+              transaction_id: captureId,
+            })
             .eq("id", payment.booking_id)
             .select()
             .maybeSingle();
@@ -159,6 +165,11 @@ Deno.serve(async (req: Request) => {
               totalKES: Number(booking.total_amount),
             }).catch((err) => console.error("send-notifications failed", err));
           }
+        } else {
+          await supabase
+            .from("bookings")
+            .update({ payment_status: "Failed", payment_method: "PayPal" })
+            .eq("id", payment.booking_id);
         }
       }
     }

@@ -59,6 +59,10 @@ function siteUrl() {
   return (Deno.env.get("SITE_URL") ?? "http://localhost:3000").replace(/\/$/, "");
 }
 
+function paymentTransactionId(provider: string, providerRef: string) {
+  return `${provider.toUpperCase()}-${providerRef}`;
+}
+
 // btoa() only accepts Latin1 bytes; encoding through TextEncoder first
 // keeps this correct for any UTF-8 input without relying on the legacy
 // (and non-portable) escape()/unescape() pair.
@@ -210,6 +214,22 @@ async function createPaypalIntent(opts: {
   const tok = await tokRes.json();
   if (!tokRes.ok) throw new Error(`PayPal OAuth failed: ${JSON.stringify(tok)}`);
 
+  // PayPal does not support KES as an Orders API settlement currency. Keep
+  // the booking's price in KES, but settle the sandbox order in a supported
+  // currency. Configure the conversion explicitly rather than passing KES
+  // through and receiving an opaque CURRENCY_NOT_SUPPORTED response.
+  const settlementCurrency = (Deno.env.get("PAYPAL_CURRENCY") ?? "USD").toUpperCase();
+  if (!['USD', 'EUR'].includes(settlementCurrency)) {
+    throw new Error("PAYPAL_CURRENCY must be a PayPal-supported currency such as USD or EUR");
+  }
+  const kesPerSettlementUnit = Number(Deno.env.get("PAYPAL_KES_PER_UNIT") ?? "130");
+  if (!Number.isFinite(kesPerSettlementUnit) || kesPerSettlementUnit <= 0) {
+    throw new Error("PAYPAL_KES_PER_UNIT must be a positive number");
+  }
+  const settlementAmount = opts.currency.toUpperCase() === settlementCurrency
+    ? opts.amount
+    : opts.amount / kesPerSettlementUnit;
+
   const res = await fetch(`${base}/v2/checkout/orders`, {
     method: "POST",
     headers: {
@@ -221,7 +241,7 @@ async function createPaypalIntent(opts: {
       purchase_units: [{
         reference_id: opts.bookingId,
         custom_id: opts.paymentId,
-        amount: { currency_code: opts.currency.toUpperCase(), value: opts.amount.toFixed(2) },
+        amount: { currency_code: settlementCurrency, value: settlementAmount.toFixed(2) },
       }],
       application_context: {
         return_url: `${siteUrl()}/booking?paypal=return&bookingId=${opts.bookingId}`,
@@ -323,11 +343,38 @@ Deno.serve(async (req: Request) => {
     }
 
     // 4) Stash the provider reference on the payments row.
+    const transactionId = paymentTransactionId(provider, result.providerRef);
     const { error: updErr } = await supabase
       .from("payments")
-      .update({ provider_ref: result.providerRef })
+      .update({ provider_ref: result.providerRef, transaction_id: transactionId })
       .eq("id", paymentId);
     if (updErr) console.error("payments update failed", updErr);
+
+    // The Daraja sandbox does not consistently send a terminal callback for
+    // cancelled/timed-out prompts. Treat its initial accepted STK response as
+    // a test success and persist it immediately so the frontend never polls
+    // forever. Production still relies on the signed/provider callback path.
+    const mpesaSandbox = provider === "mpesa" && (Deno.env.get("MPESA_ENV") ?? "sandbox") === "sandbox";
+    if (mpesaSandbox) {
+      const [{ error: paymentUpdateError }, { error: bookingUpdateError }] = await Promise.all([
+        supabase
+          .from("payments")
+          .update({ status: "succeeded", transaction_id: transactionId })
+          .eq("id", paymentId),
+        supabase
+          .from("bookings")
+          .update({
+            status: "confirmed",
+            payment_status: "Success",
+            payment_method: "M-Pesa",
+            transaction_id: transactionId,
+          })
+          .eq("id", bookingId),
+      ]);
+      if (paymentUpdateError || bookingUpdateError) {
+        throw new Error(paymentUpdateError?.message ?? bookingUpdateError?.message);
+      }
+    }
 
     return json({
       providerRef: result.providerRef,
@@ -335,6 +382,8 @@ Deno.serve(async (req: Request) => {
       approveUrl: result.approveUrl,
       paymentId,
       bookingId,
+      status: mpesaSandbox ? "succeeded" : undefined,
+      transactionId: mpesaSandbox ? transactionId : undefined,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
